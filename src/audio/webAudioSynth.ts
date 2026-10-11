@@ -55,6 +55,7 @@ export class WebAudioSynth {
   private readonly contextFactory: AudioContextFactory
   private context: AudioContext | null = null
   private lfo: OscillatorNode | null = null
+  private outputAnalyser: AnalyserNode | null = null
   private values: Record<WebSynthParameterId, number> = { ...webSynthDefaultValues }
   private snapshot: AudioSnapshot = { status: 'idle', error: null }
 
@@ -69,6 +70,9 @@ export class WebAudioSynth {
 
   getSnapshot = () => this.snapshot
 
+  /** Returns a shared, read-only output tap after audio starts; null before start or after disposal. Do not connect or reconfigure it. */
+  getOutputAnalyser = () => this.outputAnalyser
+
   private update(next: Partial<AudioSnapshot>) {
     this.snapshot = { ...this.snapshot, ...next }
     this.listeners.forEach((listener) => listener())
@@ -81,6 +85,13 @@ export class WebAudioSynth {
       this.context ??= this.contextFactory()
       if (this.context.state !== 'running') await this.context.resume()
       if (this.context.state !== 'running') throw new Error('AudioContext did not enter the running state.')
+      if (!this.outputAnalyser) {
+        this.outputAnalyser = this.context.createAnalyser()
+        this.outputAnalyser.fftSize = 4096
+        this.outputAnalyser.minDecibels = -90
+        this.outputAnalyser.maxDecibels = -10
+        this.outputAnalyser.smoothingTimeConstant = 0.75
+      }
       this.startLfo()
       this.update({ status: 'ready', error: null })
       return true
@@ -156,6 +167,8 @@ export class WebAudioSynth {
     this.allocator.resize(this.values.polyphony)
     this.context = null
     this.lfo = null
+    this.outputAnalyser?.disconnect()
+    this.outputAnalyser = null
     this.update({ status: 'idle', error: null })
   }
 
@@ -174,7 +187,8 @@ export class WebAudioSynth {
   private createVoice(leaseId: number, note: number, velocity: number, startTime: number) {
     const context = this.context
     const lfo = this.lfo
-    if (!context || !lfo) throw new Error('Audio output is not ready.')
+    const outputAnalyser = this.outputAnalyser
+    if (!context || !lfo || !outputAnalyser) throw new Error('Audio output is not ready.')
 
     const oscillators1 = Array.from({ length: this.values.unisonVoices }, () => context.createOscillator())
     const oscillators2 = Array.from({ length: this.values.unisonVoices }, () => context.createOscillator())
@@ -217,6 +231,7 @@ export class WebAudioSynth {
     oscillator1Gain.connect(filter)
     oscillator2Gain.connect(filter)
     ampGain.connect(context.destination)
+    ampGain.connect(outputAnalyser)
     lfo.connect(pitchModGain1)
     lfo.connect(pitchModGain2)
 

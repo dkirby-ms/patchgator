@@ -44,6 +44,16 @@ main { padding: 10px clamp(14px, 2vw, 32px); background-image: linear-gradient(r
 .audio-status-ready { border-color: #54d6ac; }
 .audio-status-error { border-color: #ef6c58; color: #ffd3ca; }
 .audio-status strong { margin-right: 5px; text-transform: uppercase; }
+.audio-spectrum { min-width: 0; margin-top: 8px; padding: 6px 8px; border: 1px solid #7d898c; background: #292f31; }
+.audio-spectrum-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-bottom: 4px; font: 400 10px/1.4 var(--mono); color: #b7c1c3; }
+.audio-spectrum-heading h3 { margin: 0; color: #f4f4ef; font: 700 12px/1.4 var(--mono); text-transform: uppercase; }
+.audio-spectrum-heading button { margin-left: auto; min-height: 28px; padding: 3px 8px; border: 1px solid #7d898c; border-radius: 3px; background: #202527; color: #f1c965; font: 500 10px/1.4 var(--mono); }
+.audio-spectrum-heading button:disabled { color: #b7c1c3; cursor: not-allowed; }
+.audio-spectrum-heading button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.audio-spectrum-plot { display: block; width: 100%; height: 56px; background: #202527; }
+.audio-spectrum-plot rect { fill: #54d6ac; }
+.audio-spectrum-plot line { stroke: #596365; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.audio-spectrum-labels { display: flex; justify-content: space-between; gap: 6px; margin-top: 3px; color: #b7c1c3; font: 400 9px/1.4 var(--mono); }
 .web-synth-grid { display: grid; gap: 8px; }
 .web-synth-actions { flex-wrap: wrap; }
 .synth-tutorial { margin-bottom: 12px; padding: 8px 16px; border: 1px solid #899294; border-radius: 6px; background: #292f31; font: 400 0.9375rem/1.45 system-ui, sans-serif; overflow-wrap: anywhere; }
@@ -64,7 +74,6 @@ main { padding: 10px clamp(14px, 2vw, 32px); background-image: linear-gradient(r
 .tutorial-roadmap .tutorial-step-done { border-color: #54d6ac; }
 .tutorial-roadmap li > svg { width: 16px; height: 16px; flex-shrink: 0; }
 .tutorial-step-done > svg { color: #54d6ac; }
-.tutorial-step-state { font-size: 0.875rem; }
 .tutorial-lesson-grid { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(15rem, 1fr); gap: 8px 16px; align-items: start; }
 .tutorial-lesson-copy { display: grid; min-width: 0; gap: 10px; }
 .tutorial-learn p { max-width: none; }
@@ -326,6 +335,8 @@ main { padding: 10px clamp(14px, 2vw, 32px); background-image: linear-gradient(r
 
 .keyboard-section { padding: 8px clamp(14px, 2vw, 32px); border-top: 1px solid var(--line); background: #d9d9d4; }
 .keyboard-inner { max-width: 1920px; margin: 0 auto; }
+.keyboard-performance-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 8px; align-items: stretch; }
+.keyboard-performance-grid .audio-spectrum { margin-top: 0; }
 .keyboard-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 5px; }
 .keyboard-heading { display: flex; align-items: center; gap: 11px; }
 .keyboard-heading > svg { width: 22px; color: var(--cyan); }
@@ -393,6 +404,7 @@ main { padding: 10px clamp(14px, 2vw, 32px); background-image: linear-gradient(r
   .web-envelope-layout, .hardware-envelope-layout { grid-template-columns: 160px minmax(0, 1fr); }
 }
 @media (max-width: 700px) {
+  .keyboard-performance-grid { grid-template-columns: minmax(0, 1fr); }
   .app-header { min-height: 62px; padding: 10px 14px; }
   .app-header { flex-wrap: wrap; }
   .patch-identity { display: block; width: 100%; border-left: 0; padding-left: 0; text-align: left; }
