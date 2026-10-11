@@ -1,0 +1,149 @@
+name: Publish to Azure Static Web Apps
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: azure-production
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      VITE_BASE_PATH: /
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Test
+        run: npm run test:run
+      - name: Build app
+        run: npm run build
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-web-app
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    if: github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: azure-production
+      url: ${{ steps.infrastructure.outputs.url }}
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_STATIC_WEB_APP_NAME: ${{ vars.AZURE_STATIC_WEB_APP_NAME }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'westus2' }}
+      AZURE_STATIC_WEB_APP_SKU: ${{ vars.AZURE_STATIC_WEB_APP_SKU || 'Free' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Download app artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: static-web-app
+          path: dist
+      - name: Validate Azure configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for variable in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_RESOURCE_GROUP AZURE_STATIC_WEB_APP_NAME; do
+            if [[ -z "${!variable}" ]]; then
+              echo "::error::Set the $variable GitHub variable before publishing."
+              exit 1
+            fi
+          done
+          test -s dist/index.html
+          test -s dist/staticwebapp.config.json
+      - name: Sign in to Azure with GitHub OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+      - name: Apply Bicep infrastructure
+        id: infrastructure
+        shell: bash
+        run: |
+          set -euo pipefail
+          az deployment group create \
+            --name "patchgator-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --template-file infra/main.bicep \
+            --parameters \
+              staticWebAppName="$AZURE_STATIC_WEB_APP_NAME" \
+              location="$AZURE_LOCATION" \
+              sku="$AZURE_STATIC_WEB_APP_SKU" \
+            --query properties.outputs \
+            --output json \
+            --only-show-errors > "$RUNNER_TEMP/patchgator-infrastructure.json"
+          name="$(jq -er '.staticWebAppName.value' "$RUNNER_TEMP/patchgator-infrastructure.json")"
+          url="$(jq -er '.staticWebAppUrl.value' "$RUNNER_TEMP/patchgator-infrastructure.json")"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Retrieve and mask SWA upload token
+        id: token
+        env:
+          STATIC_WEB_APP_NAME: ${{ steps.infrastructure.outputs.name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          token="$(az staticwebapp secrets list \
+            --name "$STATIC_WEB_APP_NAME" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query properties.apiKey \
+            --output tsv \
+            --only-show-errors)"
+          if [[ -z "$token" || "$token" == "null" || "$token" == "None" ]]; then
+            echo "::error::Azure did not return a Static Web Apps upload token."
+            exit 1
+          fi
+          echo "::add-mask::$token"
+          echo "value=$token" >> "$GITHUB_OUTPUT"
+      - name: Publish prebuilt app
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          action: upload
+          azure_static_web_apps_api_token: ${{ steps.token.outputs.value }}
+          app_location: dist
+          api_location: ''
+          output_location: ''
+          skip_app_build: true
+          skip_api_build: true
+          production_branch: master
+      - name: Check published site
+        env:
+          STATIC_WEB_APP_URL: ${{ steps.infrastructure.outputs.url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            --retry 6 --retry-all-errors --retry-delay 10 \
+            --connect-timeout 15 --max-time 60 \
+            --output /dev/null "$STATIC_WEB_APP_URL/"
+          printf 'Published PatchGator to %s\n' "$STATIC_WEB_APP_URL" >> "$GITHUB_STEP_SUMMARY"

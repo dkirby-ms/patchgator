@@ -37,3 +37,9 @@ npm run test    # run tests
 - The built-in Web Synth is the default profile.
 - Summit supports raw patch transfer and live control editing.
 - UltraNova editing is supported for many controls, though some hardware features are still not implemented.
+
+## Azure hosting
+
+The app publishes to Azure Static Web Apps using Bicep and GitHub Actions with
+GitHub OIDC authentication. See [Azure hosting setup](docs/azure-hosting.md) for
+the one-time resource group, identity, and GitHub variable configuration.
