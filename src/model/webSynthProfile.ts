@@ -3,10 +3,12 @@ import type { SynthPreset } from './profiles'
 
 export const webSynthParameters = [
   { id: 'osc1Wave', section: 'Oscillator 1', label: 'Oscillator 1 waveform', shortLabel: 'Wave', min: 0, max: 3, defaultValue: 2, valueLabels: ['Sine', 'Triangle', 'Sawtooth', 'Square'] },
+  { id: 'osc1CoarsePitch', section: 'Oscillator 1', label: 'Oscillator 1 coarse pitch', shortLabel: 'Coarse', min: -12, max: 12, defaultValue: 0, displayOffset: 0 },
   { id: 'osc1Detune', section: 'Oscillator 1', label: 'Oscillator 1 detune', shortLabel: 'Detune', min: -100, max: 100, defaultValue: 0, displayOffset: 0 },
   { id: 'osc1Shape', section: 'Oscillator 1', label: 'Oscillator 1 shape', shortLabel: 'Shape', min: 1, max: 99, defaultValue: 50 },
   { id: 'osc1Level', section: 'Mixer', label: 'Oscillator 1 level', shortLabel: 'Osc 1', min: 0, max: 100, defaultValue: 100 },
   { id: 'osc2Wave', section: 'Oscillator 2', label: 'Oscillator 2 waveform', shortLabel: 'Wave', min: 0, max: 3, defaultValue: 2, valueLabels: ['Sine', 'Triangle', 'Sawtooth', 'Square'] },
+  { id: 'osc2CoarsePitch', section: 'Oscillator 2', label: 'Oscillator 2 coarse pitch', shortLabel: 'Coarse', min: -12, max: 12, defaultValue: 0, displayOffset: 0 },
   { id: 'osc2Detune', section: 'Oscillator 2', label: 'Oscillator 2 detune', shortLabel: 'Detune', min: -100, max: 100, defaultValue: 0, displayOffset: 0 },
   { id: 'osc2Shape', section: 'Oscillator 2', label: 'Oscillator 2 shape', shortLabel: 'Shape', min: 1, max: 99, defaultValue: 50 },
   { id: 'osc2Level', section: 'Mixer', label: 'Oscillator 2 level', shortLabel: 'Osc 2', min: 0, max: 100, defaultValue: 100 },
@@ -45,6 +47,8 @@ export const webSynthParameterHelp = {
   osc2Wave: 'Choose the repeating wave that generates oscillator 2 sound. Sine is pure, triangle is mellow, sawtooth is bright, and square is hollow. Their different mixtures of harmonics (overtones) change the timbre; blending two waveforms creates richer sounds.',
   osc1Detune: 'Shift oscillator 1 pitch above or below the played note in cents. There are 100 cents in a semitone. Small tuning differences between oscillators create beating, a slow pulsing interference that can make the sound feel thicker.',
   osc2Detune: 'Shift oscillator 2 pitch above or below the played note in cents (100 cents per semitone). A small difference from oscillator 1 creates beating and a chorus-like thickness; matching their tuning gives a steadier blend.',
+  osc1CoarsePitch: 'Transpose oscillator 1 in whole semitones, from one octave down (-12) to one octave up (+12). This is independent of fine detune, which adjusts pitch in cents.',
+  osc2CoarsePitch: 'Transpose oscillator 2 in whole semitones, from one octave down (-12) to one octave up (+12). This is independent of fine detune, which adjusts pitch in cents.',
   osc1Level: 'Set how much oscillator 1 contributes to the mix before the filter. Mixing adds sound sources together: reduce this level to favor oscillator 2, or set it to zero to silence oscillator 1.',
   osc2Level: 'Set how much oscillator 2 contributes to the mix before the filter. Blending oscillators combines their harmonics and tuning differences. Set this level to zero to hear oscillator 1 alone.',
   filterCutoff: 'Set the mixed sound cutoff in hertz. LP removes frequencies above cutoff, HP removes frequencies below it, and BP passes frequencies around it. The filter envelope and cutoff LFO depth move cutoff relative to this base value.',

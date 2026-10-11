@@ -77,6 +77,30 @@ describe('PatchGator', () => {
     expect(usePatchStore.getState().values).toMatchObject({ osc1Detune: 0, osc2Detune: 0 })
   })
 
+  it('provides independent coarse-pitch knobs for each Web Synth oscillator', async () => {
+    const user = userEvent.setup()
+    usePatchStore.getState().setActiveProfile('web-synth')
+    render(<App />)
+
+    for (const oscillator of [1, 2]) {
+      const coarse = screen.getByRole('slider', { name: `Oscillator ${oscillator} coarse pitch` })
+      expect(coarse).toHaveAttribute('aria-valuemin', '-12')
+      expect(coarse).toHaveAttribute('aria-valuemax', '12')
+      expect(coarse).toHaveAttribute('aria-valuetext', '0 semitones')
+    }
+    const oscillator2 = screen.getByRole('slider', { name: 'Oscillator 2 coarse pitch' })
+    fireEvent.keyDown(oscillator2, { key: 'ArrowUp' })
+    expect(usePatchStore.getState().values.osc2CoarsePitch).toBe(1)
+    expect(oscillator2).toHaveAttribute('aria-valuetext', '+1 semitone')
+    fireEvent.keyDown(oscillator2, { key: 'End' })
+    expect(usePatchStore.getState().values.osc2CoarsePitch).toBe(12)
+    fireEvent.keyDown(oscillator2, { key: 'Delete' })
+    expect(usePatchStore.getState().values.osc2CoarsePitch).toBe(0)
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Web synth preset' }), 'soft-pad')
+    expect(usePatchStore.getState().values.osc1CoarsePitch).toBe(0)
+  })
+
   it('renders the blue UltraNova panel and edits its independent hardware controls', async () => {
     const user = userEvent.setup()
     const send = vi.spyOn(midiEngine, 'sendParameter').mockReturnValue(true)
