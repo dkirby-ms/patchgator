@@ -185,6 +185,8 @@ describe('subtractive synthesis tutorial', () => {
       expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
       for (const [index, item] of steps.entries()) {
         expect(item).toHaveTextContent(index < step ? 'Completed' : index === step ? 'Current' : 'Pending')
+        expect(item.querySelector('.visually-hidden')).toHaveTextContent(index < step ? 'Completed' : index === step ? 'Current' : 'Pending')
+        expect(item.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
         if (index < step) expect(item).toHaveClass('tutorial-step-done')
         else expect(item).not.toHaveClass('tutorial-step-done')
       }

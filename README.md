@@ -21,36 +21,12 @@ npm run dev
 
 Then open the local Vite URL in Chrome or Edge.
 
-## Build your first bass
+## Build your first patch
 
 Choose **Start tutorial** in the built-in Web Synth to build a classic plucky
 synth bass for electronic and pop bass lines. The guided recipe uses sawtooth
 oscillators, one shared low-pass filter, short amplifier and filter envelopes, and steady
-pitch instead of a long pad-like tail. Start audio and try low notes around C1-C2.
-
-Six steps unlock controls as you learn, followed by a preset-save step.
-The checklist marks each step complete when you continue; saving successfully
-checks off the final step. There are no badges or XP.
-Earlier targets must still be met before continuing or saving. Starting replaces
-your current patch; exiting keeps your work. Listening is optional, and your
-saved preset stays in this browser.
-
-The Web Synth mixes both oscillators into one selectable LP, HP, or BP filter
-per note. Cutoff, resonance, the filter envelope, and filter LFO assignments
-shape the mixed sound. Existing browser presets use their former Oscillator 1
-filter settings for the shared filter; presets with different oscillator filters
-may sound different. Reading presets leaves browser data untouched, and the next
-successful save stores all presets in the single-filter format.
-
-The Web Synth control surface stays compact on wide screens. Filter and LFO
-panels share space evenly; at tablet widths they sit side by side, with the
-narrow mixer spanning both signal rows. The Filter panel keeps cutoff, envelope
-amount, and resonance together below the full-width filter type selector.
-Web Synth attack, decay, and release sliders use a
-quadratic time scale: short durations get finer adjustment, while long durations
-change more quickly. Sustain stays linear in percent. Click any time value to
-enter exact milliseconds; the displayed values, presets, and audio still use
-real durations.
+pitch instead of a long pad-like tail. Start audio and try low notes around C2.
 
 ## Connect a synth
 
@@ -63,8 +39,7 @@ real durations.
 Click **Debug** in the footer to show live audio and MIDI status, selected ports,
 the MIDI channel, recent MIDI activity, and errors. Expand **Parameter values**
 to inspect the current raw patch values. Hardware profiles also show CC and
-NRPN addresses beneath their controls. Debug does not start audio or request
-MIDI access.
+NRPN addresses beneath their controls. 
 
 ```bash
 npm run dev     # start the app
@@ -74,6 +49,5 @@ npm run test    # run tests
 
 ## Notes
 
-- The built-in Web Synth is the default profile.
 - Summit supports raw patch transfer and live control editing.
 - UltraNova editing is supported for many controls, though some hardware features are still not implemented.

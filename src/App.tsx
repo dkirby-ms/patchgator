@@ -407,7 +407,7 @@ function WebSynthPanel({ audio }: { audio: AudioSnapshot }) {
     {[...subtractiveLessons, tutorialSaveLesson].map((item, step) => <li key={item.shortTitle} aria-current={step === tutorial?.step ? 'step' : undefined} className={step < completedSteps ? 'tutorial-step-done' : ''}>
       {step < completedSteps ? <Check aria-hidden="true" /> : <Square aria-hidden="true" />}
       <span>{step + 1}. {item.shortTitle}</span>
-      <span className="tutorial-step-state">{step < completedSteps ? 'Completed' : step === tutorial?.step ? 'Current' : 'Pending'}</span>
+      <span className="visually-hidden">{step < completedSteps ? 'Completed' : step === tutorial?.step ? 'Current' : 'Pending'}</span>
     </li>)}
   </ol>
 

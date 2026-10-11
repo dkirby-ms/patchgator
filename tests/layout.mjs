@@ -229,6 +229,12 @@ for (const width of [1366, 390, 320]) {
         assert.equal(await checklist.locator('.tutorial-step-done').count(), currentStep)
         assert.equal(await checklist.getByText('Completed', { exact: true }).count(), currentStep)
         assert.equal(await checklist.getByText('Pending', { exact: true }).count(), 6 - currentStep)
+        assert.equal(await checklist.locator('.visually-hidden').evaluateAll((elements) => elements.length === 7 && elements.every((element) => {
+          const style = getComputedStyle(element)
+          const box = element.getBoundingClientRect()
+          return style.position === 'absolute' && style.overflow === 'hidden' && box.width === 1 && box.height === 1
+        })), true, 'Progress state text must be clipped out of the visible layout')
+        assert.equal(await checklist.locator('li > svg[aria-hidden="true"]').count(), 7)
         assert.equal(/badge|\bXP\b/i.test(await tutorial.innerText()), false)
         assert.equal(await tutorial.locator('.tutorial-learn p').first().evaluate((element) => parseFloat(getComputedStyle(element).fontSize)), 15)
         if (width === 1366) {
@@ -358,6 +364,10 @@ for (const width of [1366, 390, 320]) {
       const completedChecklist = page.getByRole('list', { name: 'Tutorial steps', exact: true })
       assert.equal(await completedChecklist.locator('.tutorial-step-done').count(), 7)
       assert.equal(await completedChecklist.getByText('Completed', { exact: true }).count(), 7)
+      assert.equal(await completedChecklist.getByText('Completed', { exact: true }).evaluateAll((elements) => elements.every((element) => {
+        const style = getComputedStyle(element)
+        return style.position === 'absolute' && style.overflow === 'hidden' && element.getBoundingClientRect().width === 1
+      })), true, 'Completed progression must not show redundant status words')
       assert.equal(await completedChecklist.locator('[aria-current]').count(), 0)
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Completed checklist must not overflow')
       assert.ok(await page.locator('.waveform-option span').evaluateAll((labels) =>
