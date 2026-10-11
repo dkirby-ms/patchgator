@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
 import {
   Cable,
+  Check,
   ChevronDown,
   ChevronRight,
   Download,
@@ -13,11 +14,12 @@ import {
   RefreshCw,
   RotateCcw,
   Send,
+  Square,
   Upload,
   Waves,
 } from 'lucide-react'
 import './App.css'
-import { midiEngine } from './midi/midiEngine'
+import { midiEngine, type MidiSnapshot } from './midi/midiEngine'
 import { validateSysex } from './midi/sysex'
 import { useMidi } from './midi/useMidi'
 import { webAudioSynth, type AudioSnapshot } from './audio/webAudioSynth'
@@ -35,9 +37,9 @@ import {
   type ModMatrixField,
 } from './model/modMatrix'
 import { usePatchStore } from './model/patchStore'
-import { synthProfileById, synthProfiles } from './model/profiles'
+import { synthProfileById, synthProfiles, type SynthProfile } from './model/profiles'
 import { ultranovaParameters } from './model/ultranovaProfile'
-import { subtractiveLessons, tutorialDismissedStorageKey, tutorialInitialValues, tutorialParameters, tutorialSaveLesson } from './model/subtractiveTutorial'
+import { subtractiveLessons, tutorialComplete, tutorialDismissedStorageKey, tutorialInitialValues, tutorialParameters, tutorialSaveLesson } from './model/subtractiveTutorial'
 import { TutorialExplainer } from './TutorialExplainer'
 import { readWebSynthPresets, saveWebSynthPreset } from './model/webSynthPresetStorage'
 
@@ -356,18 +358,26 @@ function WebSynthPanel({ audio }: { audio: AudioSnapshot }) {
       return { dismissed: false, error: `Could not load tutorial preference: ${error instanceof Error || error instanceof DOMException ? error.message : 'Browser storage is unavailable.'}` }
     }
   })
-  const [graduated, setGraduated] = useState(false)
+  const [tutorialCompleted, setTutorialCompleted] = useState(false)
   const tutorialHeading = useRef<HTMLHeadingElement>(null)
   const startTutorialButton = useRef<HTMLButtonElement>(null)
   const wasInTutorial = useRef(false)
   const presets = [...webSynthPresets, ...presetState.presets]
   const selectedPreset = presets.find((preset) => webSynthParameters.every((parameter) => values[parameter.id] === preset.values[parameter.id]))?.id ?? ''
   const lesson = tutorial ? subtractiveLessons[tutorial.step] : undefined
+  const targetReached = tutorial ? tutorialComplete(tutorial.step, values) : true
+  const unmetLesson = tutorial ? subtractiveLessons.slice(0, tutorial.step + 1).find((item) => !item.complete(values)) : undefined
   const unlocked = tutorial ? tutorialParameters(tutorial.step) : null
   const available = (parameter: WebSynthParameter) => !unlocked || unlocked.has(parameter.id)
-  const sectionAvailable = (section: string) => webSynthParameters.some((parameter) =>
-    (parameter.section === section || (section === 'Filter' && (parameter.section === 'Filter 1' || parameter.section === 'Filter 2')))
-    && available(parameter))
+  const sectionAvailable = (section: string) => webSynthParameters.some((parameter) => parameter.section === section && available(parameter))
+  const completedSteps = tutorialCompleted ? subtractiveLessons.length + 1 : tutorial?.step ?? 0
+  const checklist = <ol className="tutorial-roadmap" aria-label="Tutorial steps">
+    {[...subtractiveLessons, tutorialSaveLesson].map((item, step) => <li key={item.shortTitle} aria-current={step === tutorial?.step ? 'step' : undefined} className={step < completedSteps ? 'tutorial-step-done' : ''}>
+      {step < completedSteps ? <Check aria-hidden="true" /> : <Square aria-hidden="true" />}
+      <span>{step + 1}. {item.shortTitle}</span>
+      <span className="tutorial-step-state">{step < completedSteps ? 'Completed' : step === tutorial?.step ? 'Current' : 'Pending'}</span>
+    </li>)}
+  </ol>
 
   useEffect(() => {
     if (tutorial) tutorialHeading.current?.focus()
@@ -388,7 +398,7 @@ function WebSynthPanel({ audio }: { audio: AudioSnapshot }) {
     webAudioSynth.allNotesOff()
     setTutorial({ step: 0 })
     applyProfileValues('web-synth', tutorialInitialValues)
-    setGraduated(false)
+    setTutorialCompleted(false)
     setSavedMessage('')
   }
 
@@ -405,12 +415,13 @@ function WebSynthPanel({ audio }: { audio: AudioSnapshot }) {
 
   function savePreset() {
     try {
+      if (tutorial && !targetReached) throw new Error(`Restore the bass target for "${unmetLesson?.title}" before saving.`)
       const next = saveWebSynthPreset(presetName, values)
       setPresetState({ presets: next, error: '' })
       setSavedMessage(`Saved "${presetName.trim()}" in this browser.`)
       setPresetName('')
       if (tutorial && !lesson) {
-        setGraduated(true)
+        setTutorialCompleted(true)
         exitTutorial()
       }
     } catch (error) {
@@ -441,7 +452,7 @@ function WebSynthPanel({ audio }: { audio: AudioSnapshot }) {
           <button type="button" className="primary-action" onClick={() => { void webAudioSynth.start() }} disabled={audio.status === 'starting'}>
             <Power aria-hidden="true" />{audio.status === 'ready' ? 'Resume audio' : audio.status === 'starting' ? 'Starting...' : 'Start audio'}
           </button>
-          <ClickControlHelp label="Audio output" text="Start or resume the browser audio engine so the virtual keyboard can produce sound. Browsers require a user gesture to enable audio. Each oscillator passes through its own LP, HP, or BP filter before the amplifier envelope and speakers; no MIDI hardware is needed." />
+          <ClickControlHelp label="Audio output" text="Start or resume the browser audio engine so the virtual keyboard can produce sound. Browsers require a user gesture to enable audio. The oscillators mix into one LP, HP, or BP filter per note before the amplifier envelope and speakers; no MIDI hardware is needed." />
           </div>
         </div>
       </div>
@@ -451,34 +462,33 @@ function WebSynthPanel({ audio }: { audio: AudioSnapshot }) {
       <section className="synth-tutorial" aria-label="Subtractive synthesis tutorial">
         {!tutorial ? <>
           {!tutorialPreference.dismissed && <>
-            <h3>Learn subtractive synthesis</h3>
-            <p>Six hands-on challenges, one patch of your own. Unlock controls from oscillator to modulation, earn badges, and save your sound. No timer or score penalty.</p>
+            <h3>Build a classic plucky synth bass</h3>
+            <p>Learn subtractive synthesis by making a punchy bass for electronic and pop bass lines: sawtooth body, a bright filter snap, a short tail, and steady pitch. Follow six hands-on steps, then save your bass. Each step is checked off as you continue.</p>
             <p>Starting replaces your current sound with a learning patch. You can exit at any time.</p>
           </>}
           <div className="tutorial-actions">
             <button ref={startTutorialButton} type="button" onClick={startTutorial}>Start tutorial</button>
             {!tutorialPreference.dismissed && <button type="button" onClick={exitTutorial}>Skip tutorial</button>}
           </div>
-          {graduated && <p role="status">Patch builder badge earned! 700 XP. All controls are unlocked.</p>}
+          {tutorialCompleted && <>
+            <p role="status">Tutorial complete. Your classic plucky bass is saved. All controls are unlocked.</p>
+            {checklist}
+          </>}
         </> : <>
           <div className="tutorial-progress-heading">
-            <span className="eyebrow">Patch builder quest / {tutorial.step * 100} XP</span>
-            <span>{tutorial.step} of 7 challenges complete</span>
+            <span className="eyebrow">Classic plucky bass checklist</span>
+            <span>{completedSteps} of {subtractiveLessons.length + 1} steps complete</span>
           </div>
-          <progress aria-label="Tutorial progress" value={tutorial.step} max={subtractiveLessons.length + 1} />
-          <ol className="tutorial-roadmap" aria-label="Tutorial steps">
-            {[...subtractiveLessons, tutorialSaveLesson].map((item, step) => <li key={item.shortTitle} aria-current={step === tutorial.step ? 'step' : undefined} className={step < tutorial.step ? 'tutorial-step-done' : ''}>
-              <span>{step + 1}. {item.shortTitle}</span>
-              {step < tutorial.step && <span className="tutorial-step-state">Done</span>}
-              {step === tutorial.step && <span className="tutorial-step-state">Current</span>}
-            </li>)}
-          </ol>
-          <h3 ref={tutorialHeading} tabIndex={-1}>{lesson ? `Challenge ${tutorial.step + 1} of 7: ${lesson.title}` : 'Challenge 7 of 7: Save your sound'}</h3>
+          {checklist}
+          <h3 ref={tutorialHeading} tabIndex={-1}>{`Step ${tutorial.step + 1} of 7: ${(lesson ?? tutorialSaveLesson).title}`}</h3>
           <TutorialExplainer lesson={lesson ?? tutorialSaveLesson} />
-          <p className="tutorial-feedback" role="status">{lesson ? lesson.complete(values) ? `Target reached! Claim ${lesson.reward} and 100 XP.` : 'Explore the unlocked controls to reach the target.' : 'Name and save your preset below to finish.'}</p>
-          {tutorial.step > 0 && <p>Badges: {subtractiveLessons.slice(0, tutorial.step).map((item) => item.reward).join(' / ')}</p>}
+          <p className="tutorial-feedback" role="status">{!targetReached ? `Reach the bass target: ${unmetLesson?.title}.` : lesson ? 'Target reached. Continue to check off this step.' : 'Your bass recipe is ready. Name and save your preset below to finish.'}</p>
+          {unmetLesson && unmetLesson !== lesson && <details>
+            <summary>Review target: {unmetLesson.title}</summary>
+            <ol>{unmetLesson.challenge.map((instruction) => <li key={instruction}>{instruction}</li>)}</ol>
+          </details>}
           <div className="tutorial-actions">
-            {lesson && <button type="button" disabled={!lesson.complete(values)} onClick={() => setTutorial({ ...tutorial, step: tutorial.step + 1 })}>Claim badge and continue</button>}
+            {lesson && <button type="button" disabled={!targetReached} onClick={() => setTutorial({ ...tutorial, step: tutorial.step + 1 })}>Continue</button>}
             <button type="button" onClick={exitTutorial}>Exit tutorial</button>
           </div>
         </>}
@@ -486,8 +496,8 @@ function WebSynthPanel({ audio }: { audio: AudioSnapshot }) {
       {tutorialPreference.error && <p className="preset-error" role="alert">{tutorialPreference.error}</p>}
       {(!tutorial || !lesson) && <form className={`web-preset-save${tutorial ? ' tutorial-preset-save' : ''}`} onSubmit={(event) => { event.preventDefault(); savePreset() }}>
         <label htmlFor="web-preset-name">Preset name</label>
-        <input id="web-preset-name" value={presetName} maxLength={64} required onChange={(event) => setPresetName(event.target.value)} placeholder="My first patch" />
-        <button type="submit" disabled={!presetName.trim()}>Save preset</button>
+        <input id="web-preset-name" value={presetName} maxLength={64} required onChange={(event) => setPresetName(event.target.value)} placeholder={tutorial ? 'Classic plucky bass' : 'My first patch'} />
+        <button type="submit" disabled={!presetName.trim() || !targetReached}>Save preset</button>
         <p>Saved only in this browser. Clearing site data removes your presets.</p>
       </form>}
       {presetState.error && <p className="preset-error" role="alert">{presetState.error}</p>}
@@ -500,19 +510,7 @@ function WebSynthPanel({ audio }: { audio: AudioSnapshot }) {
           <div key={row} className={row === 0 ? 'web-synth-signal-grid' : 'web-synth-envelope-grid'}>
             {sections.filter(sectionAvailable).map((section) => (
               <PanelModule key={section} id={`web-${section.toLowerCase().replaceAll(' ', '-')}`} title={section} className={`web-synth-module web-${section.toLowerCase().replaceAll(' ', '-')}-module`}>
-                {section === 'Filter' ? <>
-                  <div className="web-filter-bank">
-                    {(['Filter 1', 'Filter 2'] as const).filter(sectionAvailable).map((filterSection, index) => (
-                      <fieldset className="web-filter-group" key={filterSection}>
-                        <legend>Oscillator {index + 1}</legend>
-                        <div className="web-synth-controls">
-                          {webSynthParameters.filter((parameter) => parameter.section === filterSection && available(parameter)).map((parameter) => <WebSynthParameterControl key={parameter.id} parameter={parameter} />)}
-                        </div>
-                      </fieldset>
-                    ))}
-                  </div>
-                  {webSynthParameters.filter((parameter) => parameter.section === 'Filter' && available(parameter)).map((parameter) => <WebSynthParameterControl key={parameter.id} parameter={parameter} />)}
-                </> : section === 'Amp envelope' || section === 'Filter envelope'
+                {section === 'Amp envelope' || section === 'Filter envelope'
                   ? <WebSynthEnvelope section={section} values={values} />
                   : <div className="web-synth-controls">
                     {webSynthParameters.filter((parameter) => parameter.section === section && available(parameter)).map((parameter) => (
@@ -1211,6 +1209,41 @@ function UltraNovaPanel() {
   )
 }
 
+/** Shows live engine state and raw patch values without requesting MIDI access or starting audio. */
+function DebugPanel({ profile, midi, audio }: { profile: SynthProfile; midi: MidiSnapshot; audio: AudioSnapshot }) {
+  const values = usePatchStore((state) => state.values)
+  const input = midi.inputs.find((port) => port.id === midi.selectedInputId)
+  const output = midi.outputs.find((port) => port.id === midi.selectedOutputId)
+
+  return (
+    <section id="debug-panel" className="debug-panel" aria-labelledby="debug-title">
+      <h2 id="debug-title">Debug diagnostics</h2>
+      <dl className="debug-summary">
+        <div><dt>Profile</dt><dd>{profile.name}</dd></div>
+        {profile.capabilities.audioOutput && <div><dt>Audio status</dt><dd>{audio.status}</dd></div>}
+        <div><dt>MIDI status</dt><dd>{midi.status}</dd></div>
+        <div><dt>MIDI input</dt><dd>{input ? `${input.name} (${input.state})` : 'No input selected'}</dd></div>
+        {profile.capabilities.midiOutput && <div><dt>MIDI output</dt><dd>{output ? `${output.name} (${output.state})` : 'No output selected'}</dd></div>}
+        <div><dt>MIDI channel</dt><dd>{midi.channel}</dd></div>
+        <div><dt>Latest MIDI activity</dt><dd>{midi.activity}</dd></div>
+        {midi.error && <div><dt>MIDI error</dt><dd>{midi.error}</dd></div>}
+        {profile.capabilities.audioOutput && audio.error && <div><dt>Audio error</dt><dd>{audio.error}</dd></div>}
+      </dl>
+      <p>{profile.capabilities.midiOutput ? 'CC and NRPN addresses are also shown beneath hardware controls.' : 'Web Synth parameters drive built-in audio, not MIDI CC or NRPN output.'}</p>
+      <details key={profile.id}>
+        <summary>Parameter values ({profile.parameters.length})</summary>
+        <div className="debug-values" role="region" aria-label="Debug parameter values" tabIndex={0}>
+          <table>
+            <caption>Current raw parameter values</caption>
+            <thead><tr><th scope="col">Parameter</th><th scope="col">Value</th></tr></thead>
+            <tbody>{profile.parameters.map((parameter) => <tr key={parameter.id}><th scope="row">{parameter.id}</th><td>{values[parameter.id]}</td></tr>)}</tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+  )
+}
+
 function App() {
   const [debug, setDebug] = useState(false)
   const midi = useMidi()
@@ -1402,12 +1435,14 @@ function App() {
 
       {(activeProfile.capabilities.audioOutput || activeProfile.capabilities.midiOutput) && <VirtualKeyboard key={`${activeProfileId}:${activeProfileId === 'web-synth' ? audio.status : midi.selectedOutputId}`} output={keyboardOutput} />}
 
+      {debug && <DebugPanel profile={activeProfile} midi={midi} audio={audio} />}
+
       <footer className="app-footer">
         {activeProfile.capabilities.midiOutput && <div><Cable aria-hidden="true" /><span>{activeProfile.capabilities.sysex ? 'Web MIDI / SysEx' : 'Web MIDI / CC + NRPN'}</span></div>}
         {activeProfile.capabilities.audioOutput && <div><Waves aria-hidden="true" /><span>Web Audio / optional MIDI input</span></div>}
         <p>Best in current Chrome, Edge, or Firefox on desktop. Web MIDI requires HTTPS or localhost; built-in audio does not require MIDI.</p>
         <div className="footer-actions">
-          <button type="button" aria-pressed={debug} onClick={() => setDebug((current) => !current)} title="Show CC and NRPN addresses">Debug</button>
+          <button type="button" aria-pressed={debug} aria-controls="debug-panel" onClick={() => setDebug((current) => !current)} title="Show engine diagnostics and parameter values">Debug</button>
           <button type="button" onClick={resetPatch}><RotateCcw aria-hidden="true" /> Reset defaults</button>
         </div>
       </footer>

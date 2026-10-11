@@ -36,6 +36,42 @@ describe('Web Synth browser presets', () => {
     }
   })
 
+  it('loads legacy dual-filter presets using oscillator 1 settings and migrates on save only', () => {
+    const values = { ...webSynthDefaultValues, filterType: 1, filterCutoff: 1700, filterResonance: 30 }
+    const legacy = {
+      id: 'user-legacy', name: 'Two filters',
+      values: { ...values, filter2Type: 2, filter2Cutoff: 4000, filter2Resonance: 60 },
+    }
+    const raw = JSON.stringify([legacy])
+    localStorage.setItem(webSynthPresetStorageKey, raw)
+    expect(readWebSynthPresets()).toEqual([{ ...legacy, values }])
+    expect(localStorage.getItem(webSynthPresetStorageKey)).toBe(raw)
+    expect(() => saveWebSynthPreset('Legacy write', legacy.values)).toThrow(/invalid/)
+    const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Storage full') })
+    expect(() => saveWebSynthPreset('New', webSynthDefaultValues)).toThrow(/Storage full/)
+    expect(localStorage.getItem(webSynthPresetStorageKey)).toBe(raw)
+    write.mockRestore()
+    const saved = saveWebSynthPreset('New', webSynthDefaultValues)
+    expect(saved[0]).toEqual({ ...legacy, values })
+    expect(JSON.parse(localStorage.getItem(webSynthPresetStorageKey)!)).toEqual(saved)
+    expect(readWebSynthPresets()).toEqual(saved)
+  })
+
+  it.each([
+    { filter2Type: 0 },
+    { filter2Type: 3, filter2Cutoff: 4000, filter2Resonance: 20 },
+    { filter2Type: 1.5, filter2Cutoff: 4000, filter2Resonance: 20 },
+    { filter2Type: 0, filter2Cutoff: 99, filter2Resonance: 20 },
+    { filter2Type: 0, filter2Cutoff: 4000, filter2Resonance: 101 },
+    { filter2Type: 0, filter2Cutoff: 4000, unrelated: 20 },
+  ])('rejects malformed legacy data without changing it: %o', (extra) => {
+    const raw = JSON.stringify([{ id: 'user-legacy', name: 'Bad legacy', values: { ...webSynthDefaultValues, ...extra } }])
+    localStorage.setItem(webSynthPresetStorageKey, raw)
+    expect(() => readWebSynthPresets()).toThrow(/invalid/)
+    expect(() => saveWebSynthPreset('New', webSynthDefaultValues)).toThrow(/invalid/)
+    expect(localStorage.getItem(webSynthPresetStorageKey)).toBe(raw)
+  })
+
   it('rejects blank names and incomplete or invalid parameter sets', () => {
     expect(() => saveWebSynthPreset(' ', webSynthDefaultValues)).toThrow(/name/)
     expect(() => saveWebSynthPreset('x'.repeat(65), webSynthDefaultValues)).toThrow(/name/)
