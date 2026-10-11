@@ -31,6 +31,76 @@ const viewports = [
   { width: 320, height: 640 },
 ]
 
+for (const width of [1366, 320]) {
+  test(`filter grouping and quadratic envelope sliders work at ${width}px`, async () => {
+    const context = await browser.newContext({ viewport: { width, height: 844 } })
+    const page = await context.newPage()
+    try {
+      await page.goto(baseUrl)
+      const filter = page.getByRole('region', { name: 'Filter', exact: true })
+      const controls = filter.locator('.web-filter-tone-controls [role="slider"]')
+      assert.deepEqual(await controls.evaluateAll((elements) => elements.map((element) => element.getAttribute('aria-label'))), ['Filter cutoff', 'Filter envelope amount', 'Filter resonance'])
+      const boxes = await controls.evaluateAll((elements) => elements.map((element) => {
+        const box = element.getBoundingClientRect()
+        return { x: box.x, y: box.y }
+      }))
+      assert.ok(boxes[0].x < boxes[1].x && boxes[1].x < boxes[2].x)
+      assert.equal(boxes[0].y, boxes[1].y)
+      assert.equal(boxes[1].y, boxes[2].y)
+      const attack = page.getByRole('slider', { name: 'Amplifier attack', exact: true })
+      await attack.fill('500')
+      assert.equal(await attack.getAttribute('aria-valuenow'), '5000')
+      assert.equal(await attack.getAttribute('aria-valuetext'), '5 s')
+      await attack.press('Home')
+      await attack.press('ArrowUp')
+      assert.equal(await attack.getAttribute('aria-valuenow'), '1')
+      await attack.press('End')
+      await attack.press('ArrowDown')
+      assert.equal(await attack.getAttribute('aria-valuenow'), '19960')
+      await page.getByRole('button', { name: /^Edit amplifier attack value:/ }).click()
+      await page.getByRole('spinbutton', { name: 'Amplifier attack value', exact: true }).fill('25')
+      await page.getByRole('spinbutton', { name: 'Amplifier attack value', exact: true }).press('Enter')
+      assert.equal(await attack.getAttribute('aria-valuenow'), '25')
+      assert.ok(Math.abs(Number(await attack.inputValue()) - Math.sqrt(25 / 20000) * 1000) < 0.001)
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
+      const results = await new AxeBuilder({ page }).include('.web-filter-module').include('.web-synth-envelope-grid').analyze()
+      assert.deepEqual(results.violations.map(({ id }) => id), [])
+    } finally {
+      await context.close()
+    }
+  })
+
+  test(`debug diagnostics are visible and reflow across profiles at ${width}px`, async () => {
+    const context = await browser.newContext({ viewport: { width, height: 844 } })
+    const page = await context.newPage()
+    try {
+      await page.goto(baseUrl)
+      const debug = page.getByRole('button', { name: 'Debug', exact: true })
+      await debug.click()
+      const diagnostics = page.getByRole('region', { name: 'Debug diagnostics', exact: true })
+      for (const profile of ['web-synth', 'summit', 'ultranova']) {
+        await page.getByRole('combobox', { name: 'Synth profile' }).selectOption(profile)
+        await diagnostics.scrollIntoViewIfNeeded()
+        assert.equal(await diagnostics.isVisible(), true)
+        assert.equal(await diagnostics.getByText('Audio status', { exact: true }).count(), profile === 'web-synth' ? 1 : 0)
+        await diagnostics.locator('summary').click()
+        const values = diagnostics.getByRole('region', { name: 'Debug parameter values' })
+        assert.equal(await values.isVisible(), true)
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Diagnostics must not overflow the viewport')
+        assert.equal(await values.evaluate((element) => element.scrollWidth <= element.clientWidth), true, 'Raw values must not overflow horizontally')
+        if (profile !== 'web-synth') assert.equal(await page.locator('.midi-address').first().isVisible(), true)
+        const results = await new AxeBuilder({ page }).include('#debug-panel').analyze()
+        assert.deepEqual(results.violations.map(({ id }) => id), [])
+      }
+      await debug.click()
+      assert.equal(await diagnostics.count(), 0)
+      assert.equal(await page.locator('.midi-address').first().isVisible(), false)
+    } finally {
+      await context.close()
+    }
+  })
+}
+
 for (const { width, height } of viewports) {
   test(`UltraNova blue panel reflows without clipping at ${width} x ${height}`, async () => {
     const page = await browser.newPage({ viewport: { width, height } })
@@ -147,19 +217,34 @@ for (const width of [1366, 390, 320]) {
       await page.getByRole('button', { name: 'Start tutorial', exact: true }).click()
       const assertLayout = async () => {
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Tutorial must not overflow horizontally')
-        assert.equal(await page.getByRole('heading', { name: /Challenge \d/ }).evaluate((heading) => heading === document.activeElement), true)
+        assert.equal(await page.getByRole('heading', { name: /Step \d/ }).evaluate((heading) => heading === document.activeElement), true)
         const tutorial = page.getByRole('region', { name: 'Subtractive synthesis tutorial', exact: true })
         for (const name of ['Learn', 'See the idea', 'Try it', 'Listen for']) {
           assert.equal(await tutorial.getByRole('heading', { name, exact: true }).isVisible(), true)
         }
         assert.equal(await tutorial.getByRole('img').count(), 1)
         assert.equal(await tutorial.getByRole('list', { name: 'Tutorial steps', exact: true }).locator('[aria-current="step"]').count(), 1)
+        const checklist = tutorial.getByRole('list', { name: 'Tutorial steps', exact: true })
+        const currentStep = await checklist.locator('li[aria-current="step"]').evaluate((item) => [...item.parentElement.children].indexOf(item))
+        assert.equal(await checklist.locator('.tutorial-step-done').count(), currentStep)
+        assert.equal(await checklist.getByText('Completed', { exact: true }).count(), currentStep)
+        assert.equal(await checklist.getByText('Pending', { exact: true }).count(), 6 - currentStep)
+        assert.equal(/badge|\bXP\b/i.test(await tutorial.innerText()), false)
         assert.equal(await tutorial.locator('.tutorial-learn p').first().evaluate((element) => parseFloat(getComputedStyle(element).fontSize)), 15)
         if (width === 1366) {
           const height = await tutorial.evaluate((element) => element.getBoundingClientRect().height)
           assert.ok(height <= 600, `Desktop tutorial must leave room for controls; measured ${height}px`)
         }
         assert.ok(await tutorial.getByRole('button', { name: 'Exit tutorial', exact: true }).evaluate((button) => button.getBoundingClientRect().height) >= 44)
+        const waveformLabels = page.locator('.tutorial-controls .waveform-option span')
+        assert.ok(await waveformLabels.count() >= 4)
+        assert.deepEqual(await waveformLabels.evaluateAll((labels) => labels.filter((label) => {
+          const bounds = label.getBoundingClientRect()
+          const button = label.closest('.waveform-option').getBoundingClientRect()
+          return getComputedStyle(label).clipPath !== 'none' || label.scrollWidth > label.clientWidth + 1
+            || bounds.width <= 1 || bounds.height <= 1
+            || bounds.left < button.left || bounds.right > button.right || bounds.top < button.top || bounds.bottom > button.bottom
+        }).map((label) => label.textContent)), [], 'Tutorial waveform names must be visible inside their buttons')
         const scan = await new AxeBuilder({ page }).include('.synth-tutorial').analyze()
         assert.deepEqual(scan.violations.map(({ id, nodes }) => ({ id, targets: nodes.map(({ target }) => target) })), [])
         const resizedText = await page.addStyleTag({ content: `
@@ -171,6 +256,9 @@ for (const width of [1366, 390, 320]) {
         const clipped = await tutorial.locator('h3, h4, p, li, button, figcaption, .tutorial-visual-labels span').evaluateAll((elements) =>
           elements.filter((element) => element.scrollWidth > element.clientWidth + 1).map((element) => element.textContent))
         assert.deepEqual(clipped, [], 'Enlarged and spaced text must not be clipped')
+        assert.deepEqual(await waveformLabels.evaluateAll((labels) => labels.filter((label) =>
+          label.scrollWidth > label.clientWidth + 1 || label.scrollHeight > label.clientHeight + 1
+        ).map((label) => label.textContent)), [], 'Waveform names must reflow with enlarged text')
         await resizedText.evaluate((element) => element.remove())
       }
       await assertLayout()
@@ -209,7 +297,7 @@ for (const width of [1366, 390, 320]) {
       await key.press('Space')
       assert.equal(await key.isEnabled(), true)
       await page.getByRole('group', { name: 'Oscillator 1 waveform', exact: true }).getByRole('radio', { name: 'Sawtooth' }).check()
-      const next = page.getByRole('button', { name: 'Claim badge and continue', exact: true })
+      const next = page.getByRole('button', { name: 'Continue', exact: true })
       await next.click()
       await assertLayout()
       const level = page.getByRole('slider', { name: 'Oscillator 2 level', exact: true })
@@ -228,44 +316,61 @@ for (const width of [1366, 390, 320]) {
         await page.mouse.move(x, y + offset)
         await page.mouse.up()
       }
-      for (const oscillator of [1, 2]) {
-        const cutoff = page.getByRole('slider', { name: `Oscillator ${oscillator} filter cutoff`, exact: true })
+      {
+        const cutoff = page.getByRole('slider', { name: 'Filter cutoff', exact: true })
         await cutoff.press('Home')
         await drag(cutoff, -14)
-        await page.getByRole('button', { name: new RegExp(`^Edit oscillator ${oscillator} filter cutoff value:`) }).click()
-        const exactCutoff = page.getByRole('spinbutton', { name: `Oscillator ${oscillator} filter cutoff value`, exact: true })
-        await exactCutoff.fill('1500')
+        await page.getByRole('button', { name: /^Edit filter cutoff value:/ }).click()
+        const exactCutoff = page.getByRole('spinbutton', { name: 'Filter cutoff value', exact: true })
+        await exactCutoff.fill('350')
         await exactCutoff.press('Enter')
-        assert.equal(await cutoff.getAttribute('aria-valuenow'), '1500')
-        await page.getByRole('slider', { name: `Oscillator ${oscillator} filter resonance`, exact: true }).press('PageUp')
+        assert.equal(await cutoff.getAttribute('aria-valuenow'), '350')
+        await page.getByRole('slider', { name: 'Filter resonance', exact: true }).press('PageUp')
       }
       await next.click()
       await assertLayout()
       const sustain = page.getByRole('slider', { name: 'Amplifier sustain', exact: true })
       await sustain.press('Home')
-      for (let i = 0; i < 30; i++) await sustain.press('ArrowUp')
+      for (let i = 0; i < 10; i++) await sustain.press('ArrowUp')
+      await page.getByRole('button', { name: /^Edit amplifier decay value:/ }).click()
+      await page.getByRole('spinbutton', { name: 'Amplifier decay value', exact: true }).fill('250')
+      await page.getByRole('spinbutton', { name: 'Amplifier decay value', exact: true }).press('Enter')
       await next.click()
       await assertLayout()
       const amount = page.getByRole('slider', { name: 'Filter envelope amount', exact: true })
       await amount.press('PageUp')
       await amount.press('PageUp')
       await amount.press('PageUp')
+      await page.getByRole('button', { name: /^Edit filter decay value:/ }).click()
+      await page.getByRole('spinbutton', { name: 'Filter decay value', exact: true }).fill('180')
+      await page.getByRole('spinbutton', { name: 'Filter decay value', exact: true }).press('Enter')
+      await page.getByRole('slider', { name: 'Filter sustain', exact: true }).fill('0')
       await next.click()
       await assertLayout()
       await page.getByRole('slider', { name: 'LFO pitch depth', exact: true }).press('PageUp')
+      assert.equal(await next.isDisabled(), true)
+      await page.getByRole('slider', { name: 'LFO pitch depth', exact: true }).press('Home')
       await next.click()
       await assertLayout()
-      await page.getByRole('textbox', { name: 'Preset name', exact: true }).fill('Browser quest')
+      await page.getByRole('textbox', { name: 'Preset name', exact: true }).fill('Browser plucky bass')
       await page.getByRole('button', { name: 'Save preset', exact: true }).click()
-      assert.equal(await page.getByText('Patch builder badge earned! 700 XP. All controls are unlocked.').isVisible(), true)
+      assert.equal(await page.getByText('Tutorial complete. Your classic plucky bass is saved. All controls are unlocked.').isVisible(), true)
+      const completedChecklist = page.getByRole('list', { name: 'Tutorial steps', exact: true })
+      assert.equal(await completedChecklist.locator('.tutorial-step-done').count(), 7)
+      assert.equal(await completedChecklist.getByText('Completed', { exact: true }).count(), 7)
+      assert.equal(await completedChecklist.locator('[aria-current]').count(), 0)
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'Completed checklist must not overflow')
+      assert.ok(await page.locator('.waveform-option span').evaluateAll((labels) =>
+        labels.every((label) => getComputedStyle(label).position === 'absolute' && label.getBoundingClientRect().width === 1)
+      ), 'Waveform names must return to visually hidden labels after exiting the tutorial')
       assert.equal(await page.getByRole('button', { name: 'Start tutorial', exact: true }).evaluate((button) => button === document.activeElement), true)
       const preset = await page.getByRole('combobox', { name: 'Web synth preset', exact: true }).inputValue()
       assert.match(preset, /^user-/)
       await page.reload()
-      assert.equal(await page.getByRole('heading', { name: 'Learn subtractive synthesis', exact: true }).count(), 0)
+      assert.equal(await page.getByRole('heading', { name: 'Build a classic plucky synth bass', exact: true }).count(), 0)
       assert.equal(await page.getByRole('button', { name: 'Skip tutorial', exact: true }).count(), 0)
       await page.getByRole('combobox', { name: 'Web synth preset', exact: true }).selectOption(preset)
-      assert.equal(await page.getByRole('slider', { name: 'Amplifier sustain', exact: true }).inputValue(), '30')
+      assert.equal(await page.getByRole('slider', { name: 'Amplifier sustain', exact: true }).inputValue(), '10')
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
     } finally {
       await context.close()
@@ -287,6 +392,7 @@ for (const { width, height, maxPageHeight } of viewports) {
           return {
             pageWidth: document.documentElement.scrollWidth,
             pageHeight: document.documentElement.scrollHeight,
+            debugHeight: document.getElementById('debug-panel')?.getBoundingClientRect().height ?? 0,
             clipped: [...document.querySelectorAll('.parameter-control, .peak-module-title, .lfo-selector button')]
               .filter(visible)
               .filter((element) => element.scrollWidth > element.clientWidth + 1)
@@ -302,7 +408,8 @@ for (const { width, height, maxPageHeight } of viewports) {
         })
         assert.ok(layout.pageWidth <= width, `Page overflows horizontally: ${layout.pageWidth}px`)
         if (maxPageHeight) {
-          assert.ok(layout.pageHeight <= maxPageHeight, `Page exceeds ${maxPageHeight}px budget: ${layout.pageHeight}px`)
+          const compactHeight = layout.pageHeight - layout.debugHeight
+          assert.ok(compactHeight <= maxPageHeight, `Synth layout exceeds ${maxPageHeight}px budget: ${compactHeight}px (excluding optional diagnostics)`)
         }
         assert.deepEqual(layout.clipped, [], 'Control content must not be clipped')
         assert.deepEqual(layout.smallTargets, [], 'Interactive targets must be at least 24 x 24px')
@@ -571,7 +678,7 @@ test('Web Synth envelope controls sit beside their graphs without an output visu
 test('Web Synth panels align compactly and graphical waveform radios work with the keyboard', async () => {
   const page = await browser.newPage()
   try {
-    for (const { width, height } of viewports) {
+    for (const { width, height } of [...viewports, { width: 601, height: 900 }, { width: 600, height: 900 }]) {
       await page.setViewportSize({ width, height })
       await page.goto(baseUrl)
       await page.evaluate(() => document.fonts.ready)
@@ -599,6 +706,9 @@ test('Web Synth panels align compactly and graphical waveform radios work with t
       })
       assert.ok(layout.pageWidth <= width, `Web Synth overflows at ${width}px: ${JSON.stringify(layout)}`)
       assert.deepEqual(layout.clipped, [], `Controls clipped at ${width}px`)
+      assert.ok(await page.locator('.waveform-option span').evaluateAll((labels) =>
+        labels.every((label) => getComputedStyle(label).position === 'absolute' && label.getBoundingClientRect().width === 1)
+      ), 'Normal editor waveform buttons must remain icon-only')
       if (width > 1200) {
         for (const panel of layout.panels) {
           assert.equal(panel.top, layout.panels[0].top, 'Signal panels must share a top edge')
@@ -622,6 +732,50 @@ test('Web Synth panels align compactly and graphical waveform radios work with t
   }
 })
 
+test('Web Synth allocates space to controls rather than oversized filter columns', async () => {
+  const page = await browser.newPage()
+  try {
+    for (const width of [1920, 1366, 1201, 1200, 1099, 768, 701, 700, 601]) {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto(baseUrl)
+      await page.evaluate(() => document.fonts.ready)
+      const layout = await page.evaluate(() => {
+        const bounds = (selector) => {
+          const box = document.querySelector(selector).getBoundingClientRect()
+          return { width: box.width, top: box.top, bottom: box.bottom, left: box.left, right: box.right }
+        }
+        return {
+          panel: bounds('.web-synth-panel'),
+          filter: bounds('.web-filter-module'),
+          lfo: bounds('.web-lfo-module'),
+          mixer: bounds('.web-mixer-module'),
+          oscillator: bounds('.web-oscillator-1-module'),
+          filterType: bounds('.web-filter-type'),
+          filterControls: [...document.querySelectorAll('.web-filter-tone-controls .web-synth-control')]
+            .map((element) => element.getBoundingClientRect().width),
+          lfoRows: [...document.querySelectorAll('.web-lfo-module [role="slider"]')]
+            .map((element) => element.getBoundingClientRect().top),
+          pageWidth: document.documentElement.scrollWidth,
+        }
+      })
+      assert.ok(layout.panel.width <= 1480, 'Ultrawide screens must not stretch the control surface indefinitely')
+      assert.ok(layout.pageWidth <= width, `Web Synth must fit at ${width}px`)
+      assert.ok(Math.abs(layout.filter.width - layout.lfo.width) < 1, 'Filter and LFO must share space evenly')
+      assert.ok(layout.filterControls.every((controlWidth) => controlWidth <= 170), `Filter encoder cells must stay compact at ${width}px: ${layout.filterControls}`)
+      assert.ok(Math.abs(layout.filterType.width - (layout.filter.width - 2)) < 1, 'Filter type row must not leave an unused strip')
+      assert.equal(new Set(layout.lfoRows).size, 2, `LFO encoders must align in two rows at ${width}px: ${layout.lfoRows}`)
+      if (width <= 1200) {
+        assert.equal(layout.filter.top, layout.lfo.top, 'Filter and LFO must sit side by side')
+        assert.equal(layout.mixer.top, layout.oscillator.top)
+        assert.equal(layout.mixer.bottom, layout.filter.bottom, 'Mixer must share both signal rows without unused grid space')
+        assert.ok(layout.lfo.right <= layout.mixer.left, 'The spanning mixer must not overlap the LFO')
+      }
+    }
+  } finally {
+    await page.close()
+  }
+})
+
 test('Web Synth help is keyboard operable and stays within every viewport', async () => {
   const page = await browser.newPage()
   try {
@@ -629,7 +783,7 @@ test('Web Synth help is keyboard operable and stays within every viewport', asyn
       await page.setViewportSize({ width, height })
       await page.goto(baseUrl)
       const helps = page.locator('.click-control-help')
-      assert.equal(await helps.count(), 36)
+      assert.equal(await helps.count(), 33)
       for (const help of await helps.all()) {
         await help.scrollIntoViewIfNeeded()
         await help.focus()
@@ -648,9 +802,9 @@ test('Web Synth help is keyboard operable and stays within every viewport', asyn
         assert.equal(await help.evaluate((element) => element === document.activeElement), true)
       }
     }
-    const help = page.getByRole('button', { name: 'Oscillator 1 filter cutoff help', exact: true })
+    const help = page.getByRole('button', { name: 'Filter cutoff help', exact: true })
     await help.click()
-    await page.getByRole('button', { name: 'Oscillator 1 filter resonance help', exact: true }).click()
+    await page.getByRole('button', { name: 'Filter resonance help', exact: true }).click()
     assert.equal(await page.getByRole('tooltip').count(), 1)
     await page.getByRole('heading', { name: 'Built-in Web Synth', exact: true }).click()
     assert.equal(await page.getByRole('tooltip').count(), 0)
@@ -659,7 +813,7 @@ test('Web Synth help is keyboard operable and stays within every viewport', asyn
   }
 })
 
-test('Web Synth renders independent LP/HP/BP filters, unison, and oscillator shape in real Web Audio', async () => {
+test('Web Synth renders a shared LP/HP/BP filter, unison, and oscillator shape in real Web Audio', async () => {
   const page = await browser.newPage()
   try {
     await page.goto(baseUrl)
@@ -681,7 +835,7 @@ test('Web Synth renders independent LP/HP/BP filters, unison, and oscillator sha
         const synth = new WebAudioSynth(() => context)
         synth.setParameters({
           ...webSynthDefaultValues, osc1Wave: 0, osc2Wave: 0, osc1Detune: 0, osc2Detune: 0,
-          filterCutoff: 12000, filter2Cutoff: 12000, filterResonance: 0, filter2Resonance: 0,
+          filterCutoff: 12000, filterResonance: 0,
           filterEnvelopeAmount: 0, ampAttack: 0, ampDecay: 0, ampSustain: 100, ...values,
         })
         await synth.start()
@@ -694,7 +848,7 @@ test('Web Synth renders independent LP/HP/BP filters, unison, and oscillator sha
       const only1 = await render({ osc2Level: 0 })
       const only2 = await render({ osc1Level: 0 })
       const highpass1 = await render({ osc2Level: 0, filterType: 1, filterCutoff: 4000 })
-      const highpass2 = await render({ osc1Level: 0, filter2Type: 1, filter2Cutoff: 4000 })
+      const highpass2 = await render({ osc1Level: 0, filterType: 1, filterCutoff: 4000 })
       const lowpass = await render({ osc2Level: 0, filterCutoff: 100 })
       const bandCenter = await render({ osc2Level: 0, filterType: 2, filterCutoff: 440, filterResonance: 25 })
       const bandOff = await render({ osc2Level: 0, filterType: 2, filterCutoff: 4000, filterResonance: 25 })
@@ -725,9 +879,10 @@ test('Web Synth renders independent LP/HP/BP filters, unison, and oscillator sha
     })
     assert.equal(audio.finite, true, 'Rendered output must contain only finite samples')
     assert.ok(audio.only1 > 0.001 && audio.only2 > 0.001, 'Both oscillator branches must produce audio')
-    assert.ok(Math.abs(audio.only1 - audio.only2) < 0.00001, 'Matched filter branches must sound equally loud')
-    assert.ok(audio.highpass1 < audio.only1 * 0.05, 'Oscillator 1 HP must attenuate low frequencies')
-    assert.ok(audio.highpass2 < audio.only2 * 0.05, 'Oscillator 2 HP must attenuate low frequencies')
+    assert.ok(Math.abs(audio.mixed - (audio.only1 + audio.only2)) < 0.00001, 'The shared filter must preserve the summed level of aligned oscillators')
+    assert.ok(Math.abs(audio.only1 - audio.only2) < 0.00001, 'Either oscillator through the shared filter must sound equally loud')
+    assert.ok(audio.highpass1 < audio.only1 * 0.05, 'Shared HP must attenuate oscillator 1 low frequencies')
+    assert.ok(audio.highpass2 < audio.only2 * 0.05, 'Shared HP must attenuate oscillator 2 low frequencies')
     assert.ok(audio.lowpass < audio.only1 * 0.1, 'LP must attenuate high frequencies')
     assert.ok(audio.bandCenter > audio.bandOff * 10, 'BP must pass its center frequency')
     assert.ok(Math.abs(audio.unison - audio.only1) < 0.00001, 'Aligned unison copies must not increase volume')

@@ -9,6 +9,7 @@ import { midiEngine, type MidiInputNoteEvent } from './midi/midiEngine'
 import { webAudioSynth } from './audio/webAudioSynth'
 import { webSynthParameterHelp, webSynthParameters, webSynthPresets } from './model/webSynthProfile'
 import { ultranovaParameters } from './model/ultranovaProfile'
+import { envelopeTimeToPosition } from './model/envelopeSliderScale'
 
 describe('PatchGator', () => {
   beforeEach(() => usePatchStore.setState({
@@ -58,6 +59,22 @@ describe('PatchGator', () => {
     expect(screen.getByRole('region', { name: 'Oscillator 1' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Oscillator 1 manual shape')).not.toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Synth profile' })).toHaveDisplayValue('Built-in Web Synth')
+  })
+
+  it('initializes and resets both Web Synth oscillator detunes to zero', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Synth profile' }), 'web-synth')
+    for (const oscillator of [1, 2]) {
+      expect(screen.getByRole('slider', { name: `Oscillator ${oscillator} detune` })).toHaveAttribute('aria-valuenow', '0')
+    }
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Oscillator 2 detune' }), { key: 'ArrowUp' })
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Oscillator 2 detune' }), { key: 'Delete' })
+    expect(usePatchStore.getState().values.osc2Detune).toBe(0)
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Web synth preset' }), 'soft-pad')
+    expect(usePatchStore.getState().values.osc2Detune).toBe(12)
+    await user.click(screen.getByRole('button', { name: /reset defaults/i }))
+    expect(usePatchStore.getState().values).toMatchObject({ osc1Detune: 0, osc2Detune: 0 })
   })
 
   it('renders the blue UltraNova panel and edits its independent hardware controls', async () => {
@@ -116,7 +133,7 @@ describe('PatchGator', () => {
     expect(screen.getByRole('region', { name: 'LFO' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Modulation matrix' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Connect MIDI' })).toBeInTheDocument()
-    expect(screen.getByRole('slider', { name: 'Oscillator 1 filter cutoff' })).toHaveClass('rotary-control')
+    expect(screen.getByRole('slider', { name: 'Filter cutoff' })).toHaveClass('rotary-control')
     expect(screen.getByRole('group', { name: 'Oscillator 1 waveform' })).toBeInTheDocument()
     for (const oscillator of [1, 2]) {
       const level = screen.getByRole('slider', { name: `Oscillator ${oscillator} level` })
@@ -142,9 +159,9 @@ describe('PatchGator', () => {
     await user.selectOptions(screen.getByRole('combobox', { name: 'Web synth preset' }), 'soft-pad')
     expect(usePatchStore.getState().values).toEqual(webSynthPresets[0].values)
     await waitFor(() => expect(setParameters).toHaveBeenLastCalledWith(webSynthPresets[0].values))
-    fireEvent.keyDown(screen.getByRole('slider', { name: 'Oscillator 1 filter cutoff' }), { key: 'ArrowUp' })
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Filter cutoff' }), { key: 'ArrowUp' })
     expect(usePatchStore.getState().values.filterCutoff).toBe(3201)
-    fireEvent.change(screen.getByRole('slider', { name: 'Amplifier attack' }), { target: { value: '1000' } })
+    fireEvent.change(screen.getByRole('slider', { name: 'Amplifier attack' }), { target: { value: String(envelopeTimeToPosition(1000, 20000)) } })
     expect(usePatchStore.getState().values.ampAttack).toBe(1000)
     expect(screen.getByRole('img', { name: 'Amplifier envelope curve' })).toHaveAccessibleDescription(/Attack 1000/)
     expect(screen.getByRole('combobox', { name: 'Web synth preset' })).toHaveValue('')
@@ -174,19 +191,22 @@ describe('PatchGator', () => {
     expect(oscillator2.getByRole('radio', { name: 'Sawtooth' })).toBeChecked()
   })
 
-  it('edits independent filters, voice counts, LFO assignments, and contextual oscillator shape', async () => {
+  it('edits one shared filter, voice counts, LFO assignments, and contextual oscillator shape', async () => {
     const user = userEvent.setup()
     const setParameters = vi.spyOn(webAudioSynth, 'setParameters')
     const sendParameter = vi.spyOn(midiEngine, 'sendParameter')
     usePatchStore.getState().setActiveProfile('web-synth')
     render(<App />)
     expect(screen.getByRole('region', { name: 'Voice / unison' })).toBeInTheDocument()
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Oscillator 1 filter type' }), '1')
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Oscillator 2 filter type' }), '2')
+    const filter = within(screen.getByRole('region', { name: 'Filter' }))
+    expect(filter.getAllByRole('combobox')).toHaveLength(1)
+    expect(filter.getAllByRole('slider')).toHaveLength(3)
+    expect(screen.queryByRole('combobox', { name: 'Oscillator 2 filter type' })).not.toBeInTheDocument()
+    await user.selectOptions(filter.getByRole('combobox', { name: 'Filter type' }), '1')
     await user.selectOptions(screen.getByRole('combobox', { name: 'Polyphony' }), '16')
     await user.selectOptions(screen.getByRole('combobox', { name: 'Unison voices' }), '4')
-    fireEvent.keyDown(screen.getByRole('slider', { name: 'Oscillator 2 filter cutoff' }), { key: 'ArrowDown' })
-    fireEvent.keyDown(screen.getByRole('slider', { name: 'Oscillator 2 filter resonance' }), { key: 'ArrowUp' })
+    fireEvent.keyDown(filter.getByRole('slider', { name: 'Filter cutoff' }), { key: 'ArrowDown' })
+    fireEvent.keyDown(filter.getByRole('slider', { name: 'Filter resonance' }), { key: 'ArrowUp' })
     for (const label of ['LFO pitch depth', 'LFO cutoff depth', 'LFO resonance depth']) {
       fireEvent.keyDown(screen.getByRole('slider', { name: label }), { key: 'ArrowUp' })
     }
@@ -197,8 +217,8 @@ describe('PatchGator', () => {
     fireEvent.keyDown(shape, { key: 'ArrowDown' })
     expect(shape).toHaveAttribute('aria-valuetext', '49% pulse width')
     expect(usePatchStore.getState().values).toMatchObject({
-      filterType: 1, filter2Type: 2, filterCutoff: 6000, filter2Cutoff: 5999,
-      filterResonance: 15, filter2Resonance: 16, polyphony: 16, unisonVoices: 4,
+      filterType: 1, filterCutoff: 5999,
+      filterResonance: 16, polyphony: 16, unisonVoices: 4,
       lfoPitchDepth: 1, lfoFilterDepth: 1, lfoResonanceDepth: 1, osc1Shape: 49, osc2Shape: 50,
     })
     await waitFor(() => expect(setParameters).toHaveBeenLastCalledWith(usePatchStore.getState().values))
@@ -232,7 +252,7 @@ describe('PatchGator', () => {
       expect(screen.getByRole('tooltip')).toHaveTextContent(label)
     }
     await user.selectOptions(screen.getByRole('combobox', { name: 'Synth profile' }), 'summit')
-    expect(screen.queryByRole('button', { name: 'Oscillator 1 filter cutoff help' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Filter cutoff help' })).not.toBeInTheDocument()
     expect(document.querySelector('.click-control-tooltip')).not.toBeInTheDocument()
   })
 
@@ -619,17 +639,57 @@ describe('PatchGator', () => {
     expect(addresses.length).toBeGreaterThan(0)
     expect(document.querySelector('.app-shell')).not.toHaveClass('debug-mode')
     const debug = screen.getByRole('button', { name: 'Debug' })
+    expect(screen.queryByRole('region', { name: 'Debug diagnostics' })).not.toBeInTheDocument()
     await user.click(debug)
     expect(debug).toHaveAttribute('aria-pressed', 'true')
+    expect(debug).toHaveAttribute('aria-controls', 'debug-panel')
+    expect(screen.getByRole('region', { name: 'Debug diagnostics' })).toHaveTextContent('Novation Summit')
     expect(document.querySelector('.app-shell')).toHaveClass('debug-mode')
     await user.click(debug)
     expect(debug).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByRole('region', { name: 'Debug diagnostics' })).not.toBeInTheDocument()
     await user.selectOptions(within(screen.getByRole('region', { name: 'Filter' })).getByLabelText('Shape'), 'Dual')
     const help = screen.getByRole('button', { name: 'Dual filter help' })
     expect(help).toHaveAccessibleDescription(/runs in series/)
     help.focus()
     await user.keyboard('{Escape}')
     expect(document.getElementById(help.getAttribute('aria-describedby')!)).toHaveClass('dismissed')
+  })
+
+  it('shows live Web Synth diagnostics without starting engines and follows profile changes', async () => {
+    const user = userEvent.setup()
+    const start = vi.spyOn(webAudioSynth, 'start')
+    const connect = vi.spyOn(midiEngine, 'connect')
+    vi.spyOn(webAudioSynth, 'getSnapshot').mockReturnValue({ status: 'error', error: 'Audio device unavailable.' })
+    render(<App />)
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Synth profile' }), 'web-synth')
+    await user.click(screen.getByRole('button', { name: 'Debug' }))
+    const diagnostics = screen.getByRole('region', { name: 'Debug diagnostics' })
+    expect(diagnostics).toHaveTextContent('Built-in Web Synth')
+    expect(diagnostics).toHaveTextContent('Audio status')
+    expect(diagnostics).toHaveTextContent('Audio device unavailable.')
+    expect(diagnostics).toHaveTextContent('No input selected')
+    expect(diagnostics).not.toHaveTextContent('MIDI output')
+    expect(diagnostics).toHaveTextContent('not MIDI CC or NRPN output')
+    await user.click(within(diagnostics).getByText(/^Parameter values/))
+    const rawValues = within(diagnostics).getByRole('table')
+    expect(within(rawValues).getAllByRole('row')).toHaveLength(webSynthParameters.length + 1)
+    const cutoff = within(rawValues).getByRole('rowheader', { name: 'filterCutoff' }).closest('tr')!
+    act(() => usePatchStore.getState().setValue('filterCutoff', 1234))
+    expect(within(cutoff).getByRole('cell')).toHaveTextContent('1234')
+    act(() => midiEngine.setChannel(7))
+    expect(within(diagnostics).getByText('MIDI channel').nextElementSibling).toHaveTextContent('7')
+    expect(start).not.toHaveBeenCalled()
+    expect(connect).not.toHaveBeenCalled()
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Synth profile' }), 'ultranova')
+    expect(diagnostics).toHaveTextContent('Novation UltraNova')
+    expect(diagnostics).toHaveTextContent('No output selected')
+    expect(diagnostics).not.toHaveTextContent('Audio status')
+    expect(diagnostics).not.toHaveTextContent('Audio device unavailable.')
+    expect(diagnostics).toHaveTextContent('CC and NRPN addresses are also shown')
+    await user.click(screen.getByRole('button', { name: 'Debug' }))
+    expect(screen.queryByRole('region', { name: 'Debug diagnostics' })).not.toBeInTheDocument()
+    act(() => midiEngine.setChannel(1))
   })
 
   it('collapses sections independently without losing values or selector choices', async () => {

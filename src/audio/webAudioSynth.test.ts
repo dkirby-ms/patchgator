@@ -192,7 +192,7 @@ describe('Web Audio synth', () => {
     for (const oscillator of oscillators.slice(1)) {
       expect(oscillator.stop.mock.calls.at(-1)?.[0]).toBeCloseTo(1.02)
     }
-    for (const gain of [gains[2], gains[11], gains[20]]) {
+    for (const gain of [gains[2], gains[9], gains[16]]) {
       expect(gain.gain.audioParam.cancelAndHoldAtTime).toHaveBeenLastCalledWith(1)
       expect(gain.gain.linearRampToValueAtTime).toHaveBeenLastCalledWith(0, 1.015)
     }
@@ -232,18 +232,18 @@ describe('Web Audio synth', () => {
     synth.noteOn(60)
     synth.noteOn(62)
     synth.noteOn(64)
-    expect(modulationConnections.size).toBe(18)
+    expect(modulationConnections.size).toBe(12)
 
     expect(synth.noteOff(62)).toBe(true)
-    expect(modulationConnections.size).toBe(12)
+    expect(modulationConnections.size).toBe(8)
     expect(synth.noteOff(60)).toBe(true)
-    expect(modulationConnections.size).toBe(6)
+    expect(modulationConnections.size).toBe(4)
     expect(synth.noteOff(64)).toBe(true)
     expect(modulationConnections.size).toBe(0)
 
     for (let note = 65; note < 70; note += 1) {
       synth.noteOn(note)
-      expect(modulationConnections.size).toBe(6)
+      expect(modulationConnections.size).toBe(4)
       synth.noteOff(note)
       expect(modulationConnections.size).toBe(0)
     }
@@ -272,57 +272,59 @@ describe('Web Audio synth', () => {
     expect(synth.getSnapshot()).toEqual({ status: 'error', error: 'Audio unavailable' })
   })
 
-  it('routes each oscillator only through its own selectable filter and envelopes', async () => {
+  it('mixes both oscillator gains into exactly one selectable filter per note', async () => {
     const { context, gains, filters } = createAudioContext()
     const synth = new WebAudioSynth(() => context)
-    synth.setParameters({ ...webSynthDefaultValues, filterType: 1, filter2Type: 2, filterCutoff: 1000, filter2Cutoff: 4000, filterResonance: 10, filter2Resonance: 60 })
+    synth.setParameters({ ...webSynthDefaultValues, filterType: 1, filterCutoff: 1000, filterResonance: 10 })
     await synth.start()
     synth.noteOn(60)
     expect(gains[0].connect).toHaveBeenCalledExactlyOnceWith(filters[0].node)
-    expect(gains[1].connect).toHaveBeenCalledExactlyOnceWith(filters[1].node)
+    expect(gains[1].connect).toHaveBeenCalledExactlyOnceWith(filters[0].node)
+    expect(filters).toHaveLength(1)
+    expect(filters[0].node.connect).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ gain: gains[2].gain.audioParam }))
     expect(filters[0].node.type).toBe('highpass')
-    expect(filters[1].node.type).toBe('bandpass')
     expect(filters[0].Q.audioParam.value).toBeCloseTo(2.1)
-    expect(filters[1].Q.audioParam.value).toBeCloseTo(12.1)
     expect(filters[0].frequency.audioParam.setValueAtTime).toHaveBeenCalledWith(1000, 1)
-    expect(filters[1].frequency.audioParam.setValueAtTime).toHaveBeenCalledWith(4000, 1)
     synth.noteOff(60)
     expect(filters[0].frequency.linearRampToValueAtTime).toHaveBeenLastCalledWith(1000, 1.5)
-    expect(filters[1].frequency.linearRampToValueAtTime).toHaveBeenLastCalledWith(4000, 1.5)
+    synth.noteOn(64)
+    expect(filters).toHaveLength(2)
+    expect(gains[7].connect).toHaveBeenCalledExactlyOnceWith(filters[1].node)
+    expect(gains[8].connect).toHaveBeenCalledExactlyOnceWith(filters[1].node)
   })
 
-  it('updates filter types independently without restarting the other filter envelope', async () => {
+  it('updates the shared filter without restarting its envelope for unrelated changes', async () => {
     const { context, filters } = createAudioContext()
     const synth = new WebAudioSynth(() => context)
     await synth.start()
     synth.noteOn(60)
-    synth.setParameters({ ...webSynthDefaultValues, filterType: 2, filter2Type: 1, filterCutoff: 1800 })
+    synth.setParameters({ ...webSynthDefaultValues, filterType: 2 })
     expect(filters[0].node.type).toBe('bandpass')
-    expect(filters[1].node.type).toBe('highpass')
+    expect(filters[0].frequency.audioParam.cancelAndHoldAtTime).not.toHaveBeenCalled()
+    synth.setParameters({ ...webSynthDefaultValues, filterType: 1, filterCutoff: 1800 })
+    expect(filters[0].node.type).toBe('highpass')
     expect(filters[0].frequency.audioParam.setTargetAtTime).toHaveBeenCalledWith(1800, 1, 0.02)
-    expect(filters[1].frequency.audioParam.cancelAndHoldAtTime).not.toHaveBeenCalled()
   })
 
-  it('assigns LFO pitch in cents and cutoff and resonance to both filters with bounded depths', async () => {
+  it('assigns LFO pitch to both oscillators and bounded cutoff and resonance to the shared filter', async () => {
     const { context, gains, oscillators, filters } = createAudioContext()
     const synth = new WebAudioSynth(() => context)
-    const values = { ...webSynthDefaultValues, filterEnvelopeAmount: 0, filterCutoff: 1000, filter2Cutoff: 4000, filterResonance: 25, filter2Resonance: 75, lfoPitchDepth: 1200, lfoFilterDepth: 50, lfoResonanceDepth: 100 }
+    const values = { ...webSynthDefaultValues, filterEnvelopeAmount: 0, filterCutoff: 1000, filterResonance: 25, lfoPitchDepth: 1200, lfoFilterDepth: 50, lfoResonanceDepth: 100 }
     synth.setParameters(values)
     await synth.start()
     synth.noteOn(69)
     expect(gains[3].connect).toHaveBeenCalledWith(oscillators[1].detune)
     expect(gains[4].connect).toHaveBeenCalledWith(oscillators[2].detune)
     expect(gains[3].gain.audioParam.value).toBe(1200)
-    for (const index of [0, 1]) {
-      expect(gains[5 + index].connect).toHaveBeenCalledWith(filters[index].frequency.audioParam)
-      expect(gains[7 + index].connect).toHaveBeenCalledWith(filters[index].Q.audioParam)
-      expect(gains[7 + index].gain.audioParam.value).toBeCloseTo(5)
-    }
+    expect(gains[5].connect).toHaveBeenCalledWith(filters[0].frequency.audioParam)
+    expect(gains[6].connect).toHaveBeenCalledWith(filters[0].Q.audioParam)
+    expect(gains[6].gain.audioParam.value).toBeCloseTo(5)
     expect(gains[5].gain.audioParam.value).toBe(500)
-    expect(gains[6].gain.audioParam.value).toBe(2000)
     synth.setParameters({ ...values, lfoPitchDepth: 0, lfoFilterDepth: 0, lfoResonanceDepth: 0 })
     expect(gains.slice(3).every(({ gain }) => gain.audioParam.value === 0)).toBe(true)
-    synth.setParameters({ ...values, filterEnvelopeAmount: 100, filterResonance: 0, filter2Resonance: 100 })
+    synth.setParameters({ ...values, filterEnvelopeAmount: 100, filterResonance: 0 })
+    expect(gains.slice(5).every(({ gain }) => gain.audioParam.value === 0)).toBe(true)
+    synth.setParameters({ ...values, filterEnvelopeAmount: 100, filterResonance: 100 })
     expect(gains.slice(5).every(({ gain }) => gain.audioParam.value === 0)).toBe(true)
   })
 
@@ -335,7 +337,7 @@ describe('Web Audio synth', () => {
     expect(oscillators).toHaveLength(9)
     const detunes = oscillators.slice(1, 5).map((oscillator) => oscillator.detune.value)
     detunes.forEach((detune, index) => expect(detune).toBeCloseTo([-30, -10, 10, 30][index]))
-    oscillators.slice(5).forEach((oscillator, index) => expect(oscillator.detune.value).toBeCloseTo([-23, -3, 17, 37][index]))
+    oscillators.slice(5).forEach((oscillator, index) => expect(oscillator.detune.value).toBeCloseTo([-30, -10, 10, 30][index]))
     expect(gains[0].gain.audioParam.value).toBe(0.125)
     expect(gains[1].gain.audioParam.value).toBe(0.125)
     expect(synth.activeVoiceCount).toBe(1)
@@ -390,10 +392,10 @@ describe('Web Audio synth', () => {
     retired.forEach((oscillator) => oscillator.stop.mockImplementation(() => {}))
     synth.setParameters({ ...webSynthDefaultValues, unisonVoices: 4, polyphony: 1 })
     synth.noteOn(62)
-    expect(modulationConnections.size).toBe(12)
+    expect(modulationConnections.size).toBe(8)
     retired.forEach((oscillator) => oscillator.onended?.(new Event('ended')))
     expect(synth.activeVoiceCount).toBe(1)
-    expect(modulationConnections.size).toBe(6)
+    expect(modulationConnections.size).toBe(4)
     expect(synth.noteOff(62)).toBe(true)
     expect(synth.activeVoiceCount).toBe(0)
     expect(modulationConnections.size).toBe(0)

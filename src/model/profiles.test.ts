@@ -61,6 +61,14 @@ describe('synth profiles', () => {
     ]))
   })
 
+  it('defaults both Web Synth oscillators to zero detune while preserving preset tuning', () => {
+    for (const id of ['osc1Detune', 'osc2Detune'] as const) {
+      expect(webSynthParameters.find((parameter) => parameter.id === id)?.defaultValue).toBe(0)
+      expect(webSynthProfile.defaultValues[id]).toBe(0)
+    }
+    expect(webSynthPresets.map((preset) => preset.values.osc2Detune)).toEqual([12, 5, -12])
+  })
+
   it('uses shared hardware-sized physical envelope limits without changing MIDI scales', () => {
     for (const profile of [summitProfile, ultranovaProfile]) {
       const envelopeParameters = profile.parameters.filter((parameter) => /(?:Attack|Decay|Sustain|Release)$/.test(parameter.id))
