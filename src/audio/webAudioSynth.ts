@@ -340,7 +340,8 @@ export class WebAudioSynth {
     for (const [index, oscillators] of [voice.oscillators1, voice.oscillators2].entries()) {
       oscillators.forEach((oscillator, copy) => {
         const spread = oscillators.length === 1 ? 0 : (2 * copy / (oscillators.length - 1) - 1) * this.values.unisonDetune
-        const detune = (index === 0 ? this.values.osc1Detune : this.values.osc2Detune) + spread
+        const coarsePitch = index === 0 ? this.values.osc1CoarsePitch : this.values.osc2CoarsePitch
+        const detune = coarsePitch * 100 + (index === 0 ? this.values.osc1Detune : this.values.osc2Detune) + spread
         if (immediate) oscillator.detune.setValueAtTime(detune, now)
         else scheduleSmoothedValue(oscillator.detune, detune, now)
       })

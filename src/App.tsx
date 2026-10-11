@@ -335,6 +335,7 @@ function WebSynthParameterControl({ parameter, vertical = false }: { parameter: 
 function getWebSynthValueText(parameter: WebSynthParameter, value: number) {
   if ('valueLabels' in parameter) return parameter.valueLabels[value - parameter.min]
   if (parameter.id.endsWith('Cutoff')) return `${value} Hz`
+  if (parameter.id === 'osc1CoarsePitch' || parameter.id === 'osc2CoarsePitch') return `${value > 0 ? '+' : ''}${value} ${Math.abs(value) === 1 ? 'semitone' : 'semitones'}`
   if (parameter.id === 'osc1Detune' || parameter.id === 'osc2Detune' || parameter.id === 'lfoPitchDepth' || parameter.id === 'unisonDetune') return `${value} cents`
   if (parameter.id === 'lfoRate') return `${value} Hz`
   if (parameter.id.endsWith('Sustain') || parameter.id.endsWith('Level') || parameter.id.endsWith('Resonance') || parameter.id === 'filterEnvelopeAmount' || parameter.id === 'lfoFilterDepth' || parameter.id === 'lfoResonanceDepth') return `${value}%`

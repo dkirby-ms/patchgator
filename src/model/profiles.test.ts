@@ -54,7 +54,7 @@ describe('synth profiles', () => {
       )
     }
     expect(webSynthParameters.map((parameter) => parameter.id)).toEqual(expect.arrayContaining([
-      'osc1Wave', 'osc2Wave', 'osc1Detune', 'osc2Detune', 'filterCutoff', 'filterResonance',
+      'osc1Wave', 'osc2Wave', 'osc1CoarsePitch', 'osc2CoarsePitch', 'osc1Detune', 'osc2Detune', 'filterCutoff', 'filterResonance',
       'filterEnvelopeAmount', 'ampAttack', 'ampDecay', 'ampSustain', 'ampRelease',
       'filterAttack', 'filterDecay', 'filterSustain', 'filterRelease', 'lfoRate',
       'lfoPitchDepth', 'lfoFilterDepth',
@@ -67,6 +67,15 @@ describe('synth profiles', () => {
       expect(webSynthProfile.defaultValues[id]).toBe(0)
     }
     expect(webSynthPresets.map((preset) => preset.values.osc2Detune)).toEqual([12, 5, -12])
+  })
+
+  it('defines each Web Synth coarse pitch control as a centered semitone range', () => {
+    for (const id of ['osc1CoarsePitch', 'osc2CoarsePitch'] as const) {
+      expect(webSynthParameters.find((parameter) => parameter.id === id)).toMatchObject({
+        min: -12, max: 12, defaultValue: 0, displayOffset: 0,
+      })
+      expect(webSynthProfile.defaultValues[id]).toBe(0)
+    }
   })
 
   it('uses shared hardware-sized physical envelope limits without changing MIDI scales', () => {

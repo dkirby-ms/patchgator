@@ -36,6 +36,18 @@ describe('Web Synth browser presets', () => {
     }
   })
 
+  it('loads presets saved before coarse pitch controls were added with neutral tuning', () => {
+    const oldValues = Object.fromEntries(Object.entries(webSynthDefaultValues)
+      .filter(([id]) => id !== 'osc1CoarsePitch' && id !== 'osc2CoarsePitch'))
+    const oldPreset = { id: 'user-old-tuning', name: 'Old tuning', values: { ...oldValues, osc1Detune: 13 } }
+    localStorage.setItem(webSynthPresetStorageKey, JSON.stringify([oldPreset]))
+
+    expect(readWebSynthPresets()).toEqual([{
+      ...oldPreset,
+      values: { ...webSynthDefaultValues, osc1Detune: 13 },
+    }])
+  })
+
   it('loads legacy dual-filter presets using oscillator 1 settings and migrates on save only', () => {
     const values = { ...webSynthDefaultValues, filterType: 1, filterCutoff: 1700, filterResonance: 30 }
     const legacy = {

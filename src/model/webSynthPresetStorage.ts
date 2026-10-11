@@ -1,5 +1,5 @@
 import type { SynthPreset } from './profiles'
-import { webSynthParameters } from './webSynthProfile'
+import { webSynthDefaultValues, webSynthParameters } from './webSynthProfile'
 
 export const webSynthPresetStorageKey = 'zinth.web-synth-presets.v1'
 
@@ -9,16 +9,19 @@ const legacyFilterParameters = [
   { id: 'filter2Resonance', min: 0, max: 100 },
 ]
 
+const newlyAddedParameters = ['osc1CoarsePitch', 'osc2CoarsePitch']
+const previousWebSynthParameters = webSynthParameters.filter((parameter) => !newlyAddedParameters.includes(parameter.id))
+
 function validValues(values: unknown, allowLegacy = false): values is Record<string, number> {
   if (!values || typeof values !== 'object') return false
-  const parameters = allowLegacy && Object.keys(values).length === webSynthParameters.length + legacyFilterParameters.length
-    ? [...webSynthParameters, ...legacyFilterParameters]
-    : webSynthParameters
-  return Object.keys(values).length === parameters.length && parameters.every((parameter) => {
-    const value: unknown = Reflect.get(values, parameter.id)
-    return typeof value === 'number' && Number.isFinite(value) && value >= parameter.min && value <= parameter.max
-      && (!('valueLabels' in parameter) || Number.isInteger(value))
-  })
+  const schemas = allowLegacy
+    ? [webSynthParameters, previousWebSynthParameters, [...webSynthParameters, ...legacyFilterParameters], [...previousWebSynthParameters, ...legacyFilterParameters]]
+    : [webSynthParameters]
+  return schemas.some((parameters) => Object.keys(values).length === parameters.length && parameters.every((parameter) => {
+      const value: unknown = Reflect.get(values, parameter.id)
+      return typeof value === 'number' && Number.isFinite(value) && value >= parameter.min && value <= parameter.max
+        && (!('valueLabels' in parameter) || Number.isInteger(value))
+    }))
 }
 
 function validPreset(preset: unknown): preset is SynthPreset {
@@ -40,7 +43,7 @@ export function readWebSynthPresets(): SynthPreset[] {
   }
   return parsed.map((preset) => ({
     ...preset,
-    values: Object.fromEntries(webSynthParameters.map(({ id }) => [id, preset.values[id]])),
+    values: Object.fromEntries(webSynthParameters.map(({ id }) => [id, preset.values[id] ?? webSynthDefaultValues[id]])),
   }))
 }
 

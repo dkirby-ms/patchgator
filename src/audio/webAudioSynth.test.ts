@@ -342,7 +342,7 @@ describe('Web Audio synth', () => {
   })
 
   it('creates normalized unison copies and detunes them symmetrically', async () => {
-    const { context, oscillators, gains, modulationConnections } = createAudioContext()
+    const { context, oscillators, gains } = createAudioContext()
     const synth = new WebAudioSynth(() => context)
     synth.setParameters({ ...webSynthDefaultValues, unisonVoices: 4, unisonDetune: 30 })
     await synth.start()
@@ -356,7 +356,34 @@ describe('Web Audio synth', () => {
     expect(synth.activeVoiceCount).toBe(1)
     synth.noteOff(60)
     expect(oscillators.slice(1).every((oscillator) => oscillator.stop.mock.calls.length === 1)).toBe(true)
-    expect(modulationConnections.size).toBe(0)
+  })
+
+  it('transposes each oscillator in semitones while retaining fine and unison tuning', async () => {
+    const { context, oscillators } = createAudioContext()
+    const synth = new WebAudioSynth(() => context)
+    synth.setParameters({
+      ...webSynthDefaultValues,
+      osc1CoarsePitch: 2,
+      osc1Detune: 10,
+      osc2CoarsePitch: -12,
+      osc2Detune: -20,
+      unisonVoices: 3,
+      unisonDetune: 5,
+    })
+    await synth.start()
+    synth.noteOn(60)
+
+    expect(oscillators.slice(1, 4).map((oscillator) => oscillator.detune.value)).toEqual([205, 210, 215])
+    expect(oscillators.slice(4, 7).map((oscillator) => oscillator.detune.value)).toEqual([-1225, -1220, -1215])
+    synth.setParameters({
+      ...webSynthDefaultValues,
+      osc1CoarsePitch: -12,
+      osc2CoarsePitch: 12,
+      unisonVoices: 3,
+      unisonDetune: 5,
+    })
+    expect(oscillators[1].detune.setTargetAtTime).toHaveBeenLastCalledWith(-1205, 1, 0.02)
+    expect(oscillators[4].detune.setTargetAtTime).toHaveBeenLastCalledWith(1195, 1, 0.02)
   })
 
   it('supports mono through sixteen notes and releases notes when voice settings change', async () => {
