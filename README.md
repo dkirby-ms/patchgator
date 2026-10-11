@@ -42,6 +42,16 @@ filter settings for the shared filter; presets with different oscillator filters
 may sound different. Reading presets leaves browser data untouched, and the next
 successful save stores all presets in the single-filter format.
 
+The Web Synth control surface stays compact on wide screens. Filter and LFO
+panels share space evenly; at tablet widths they sit side by side, with the
+narrow mixer spanning both signal rows. The Filter panel keeps cutoff, envelope
+amount, and resonance together below the full-width filter type selector.
+Web Synth attack, decay, and release sliders use a
+quadratic time scale: short durations get finer adjustment, while long durations
+change more quickly. Sustain stays linear in percent. Click any time value to
+enter exact milliseconds; the displayed values, presets, and audio still use
+real durations.
+
 ## Connect a synth
 
 1. Power on the synth and choose its profile in the app.

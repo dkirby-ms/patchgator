@@ -7,6 +7,7 @@ import { webSynthDefaultValues, webSynthParameters } from './model/webSynthProfi
 import { subtractiveLessons, tutorialDismissedStorageKey, tutorialInitialValues, tutorialSaveLesson } from './model/subtractiveTutorial'
 import { readWebSynthPresets, webSynthPresetStorageKey } from './model/webSynthPresetStorage'
 import { webAudioSynth } from './audio/webAudioSynth'
+import { envelopeSliderMax, envelopeTimeToPosition } from './model/envelopeSliderScale'
 
 describe('subtractive synthesis tutorial', () => {
   beforeEach(() => {
@@ -78,8 +79,9 @@ describe('subtractive synthesis tutorial', () => {
     const attack = screen.getByRole('spinbutton', { name: 'Amplifier attack value' })
     await user.clear(attack)
     await user.type(attack, '25{Enter}')
-    expect(screen.getByRole('slider', { name: 'Amplifier attack' })).toHaveValue('25')
-    fireEvent.change(screen.getByRole('slider', { name: 'Amplifier attack' }), { target: { value: '50' } })
+    expect(screen.getByRole('slider', { name: 'Amplifier attack' })).toHaveAttribute('aria-valuenow', '25')
+    expect(screen.getByRole('slider', { name: 'Amplifier attack' })).toHaveValue(String(envelopeTimeToPosition(25, 20000)))
+    fireEvent.change(screen.getByRole('slider', { name: 'Amplifier attack' }), { target: { value: String(envelopeTimeToPosition(50, 20000)) } })
     expect(screen.getByRole('button', { name: /^Edit amplifier attack value:/ })).toHaveTextContent('50 ms')
     await user.click(screen.getByRole('button', { name: /^Edit amplifier attack value:/ }))
     await user.keyboard('{Control>}a{/Control}{Delete}')
@@ -93,8 +95,9 @@ describe('subtractive synthesis tutorial', () => {
     for (const prefix of ['Amplifier', 'Filter']) {
       for (const [stage, maximum] of Object.entries({ attack: 20000, decay: 22000, release: 30000 })) {
         const slider = screen.getByRole('slider', { name: `${prefix} ${stage}` })
-        expect(slider).toHaveAttribute('max', String(maximum))
-        fireEvent.change(slider, { target: { value: String(maximum) } })
+        expect(slider).toHaveAttribute('max', String(envelopeSliderMax))
+        expect(slider).toHaveAttribute('aria-valuemax', String(maximum))
+        fireEvent.change(slider, { target: { value: String(envelopeSliderMax) } })
         expect(slider).toHaveAttribute('aria-valuetext', `${maximum / 1000} s`)
         const button = screen.getByRole('button', { name: new RegExp(`^Edit ${prefix.toLowerCase()} ${stage} value:`) })
         expect(button).toHaveTextContent(`${maximum / 1000} s`)
@@ -105,9 +108,9 @@ describe('subtractive synthesis tutorial', () => {
         expect(screen.getByText('Milliseconds (ms)')).toBeVisible()
         await user.clear(input)
         await user.type(input, '1500{Enter}')
-        expect(slider).toHaveValue('1500')
+        expect(slider).toHaveAttribute('aria-valuenow', '1500')
         expect(slider).toHaveAttribute('aria-valuetext', '1.5 s')
-        fireEvent.change(slider, { target: { value: '999' } })
+        fireEvent.change(slider, { target: { value: String(envelopeTimeToPosition(999, maximum)) } })
         expect(slider).toHaveAttribute('aria-valuetext', '999 ms')
         fireEvent.keyDown(slider, { key: 'Delete' })
       }
@@ -116,6 +119,39 @@ describe('subtractive synthesis tutorial', () => {
       fireEvent.change(sustain, { target: { value: '100' } })
       expect(sustain).toHaveAttribute('aria-valuetext', '100%')
     }
+  })
+
+  it('keeps filter tone controls together and adjusts short and long envelope times at different precision', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    const filter = screen.getByRole('region', { name: 'Filter' })
+    const toneControls = filter.querySelector<HTMLElement>('.web-filter-tone-controls')!
+    expect(within(toneControls).getAllByRole('slider').map((slider) => slider.getAttribute('aria-label')))
+      .toEqual(['Filter cutoff', 'Filter envelope amount', 'Filter resonance'])
+    expect(within(filter).getByRole('combobox', { name: 'Filter type' })).toBeInTheDocument()
+    expect(within(toneControls).queryByRole('combobox')).not.toBeInTheDocument()
+    for (const [prefix, label] of [['amp', 'Amplifier'], ['filter', 'Filter']] as const) {
+      const slider = screen.getByRole('slider', { name: `${label} attack` })
+      slider.focus()
+      await user.keyboard('{Home}{ArrowUp}')
+      expect(usePatchStore.getState().values[`${prefix}Attack`]).toBe(1)
+      await user.keyboard('{ArrowDown}')
+      expect(usePatchStore.getState().values[`${prefix}Attack`]).toBe(0)
+      await user.keyboard('{End}{ArrowDown}')
+      expect(usePatchStore.getState().values[`${prefix}Attack`]).toBe(19960)
+      await user.keyboard('{ArrowUp}')
+      expect(usePatchStore.getState().values[`${prefix}Attack`]).toBe(20000)
+      await user.keyboard('{PageDown}')
+      expect(usePatchStore.getState().values[`${prefix}Attack`]).toBe(18050)
+      await user.keyboard('{PageUp}')
+      expect(usePatchStore.getState().values[`${prefix}Attack`]).toBe(20000)
+      await user.keyboard('{Delete}')
+      expect(usePatchStore.getState().values[`${prefix}Attack`]).toBe(webSynthDefaultValues[`${prefix}Attack`])
+    }
+    const sustain = screen.getByRole('slider', { name: 'Amplifier sustain' })
+    fireEvent.change(sustain, { target: { value: '37' } })
+    expect(usePatchStore.getState().values.ampSustain).toBe(37)
+    expect(sustain).toHaveValue('37')
   })
 
   it('presents every challenge with structured actions, listening guidance, an accessible sketch, and a current step', async () => {
@@ -248,13 +284,13 @@ describe('subtractive synthesis tutorial', () => {
     }
     expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled()
     await user.click(screen.getByRole('button', { name: 'Continue' }))
-    fireEvent.change(screen.getByRole('slider', { name: 'Amplifier decay' }), { target: { value: '250' } })
+    fireEvent.change(screen.getByRole('slider', { name: 'Amplifier decay' }), { target: { value: String(envelopeTimeToPosition(250, 22000)) } })
     fireEvent.change(screen.getByRole('slider', { name: 'Amplifier sustain' }), { target: { value: '10' } })
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     const amount = screen.getByRole('slider', { name: 'Filter envelope amount' })
     amount.focus()
     await user.keyboard('{PageUp}{PageUp}{PageUp}')
-    fireEvent.change(screen.getByRole('slider', { name: 'Filter decay' }), { target: { value: '180' } })
+    fireEvent.change(screen.getByRole('slider', { name: 'Filter decay' }), { target: { value: String(envelopeTimeToPosition(180, 22000)) } })
     fireEvent.change(screen.getByRole('slider', { name: 'Filter sustain' }), { target: { value: '0' } })
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     screen.getByRole('slider', { name: 'LFO pitch depth' }).focus()
@@ -276,11 +312,11 @@ describe('subtractive synthesis tutorial', () => {
     })
     expect(screen.getByRole('textbox', { name: 'Preset name' })).toHaveAttribute('placeholder', 'Classic plucky bass')
     await user.type(screen.getByRole('textbox', { name: 'Preset name' }), 'My plucky bass')
-    fireEvent.change(screen.getByRole('slider', { name: 'Amplifier release' }), { target: { value: '5000' } })
+    fireEvent.change(screen.getByRole('slider', { name: 'Amplifier release' }), { target: { value: String(envelopeTimeToPosition(5000, 30000)) } })
     expect(screen.getByRole('button', { name: 'Save preset' })).toBeDisabled()
     expect(screen.getByText('Review target: Make the bass pluck')).toBeInTheDocument()
     expect(screen.getByText(subtractiveLessons[3].challenge[1])).toBeInTheDocument()
-    fireEvent.change(screen.getByRole('slider', { name: 'Amplifier release' }), { target: { value: '80' } })
+    fireEvent.change(screen.getByRole('slider', { name: 'Amplifier release' }), { target: { value: String(envelopeTimeToPosition(80, 30000)) } })
     const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Storage full', 'QuotaExceededError') })
     await user.click(screen.getByRole('button', { name: 'Save preset' }))
     expect(screen.getByRole('alert')).toHaveTextContent('Storage full')

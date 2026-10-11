@@ -9,6 +9,7 @@ import { midiEngine, type MidiInputNoteEvent } from './midi/midiEngine'
 import { webAudioSynth } from './audio/webAudioSynth'
 import { webSynthParameterHelp, webSynthParameters, webSynthPresets } from './model/webSynthProfile'
 import { ultranovaParameters } from './model/ultranovaProfile'
+import { envelopeTimeToPosition } from './model/envelopeSliderScale'
 
 describe('PatchGator', () => {
   beforeEach(() => usePatchStore.setState({
@@ -58,6 +59,22 @@ describe('PatchGator', () => {
     expect(screen.getByRole('region', { name: 'Oscillator 1' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Oscillator 1 manual shape')).not.toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Synth profile' })).toHaveDisplayValue('Built-in Web Synth')
+  })
+
+  it('initializes and resets both Web Synth oscillator detunes to zero', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Synth profile' }), 'web-synth')
+    for (const oscillator of [1, 2]) {
+      expect(screen.getByRole('slider', { name: `Oscillator ${oscillator} detune` })).toHaveAttribute('aria-valuenow', '0')
+    }
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Oscillator 2 detune' }), { key: 'ArrowUp' })
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Oscillator 2 detune' }), { key: 'Delete' })
+    expect(usePatchStore.getState().values.osc2Detune).toBe(0)
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Web synth preset' }), 'soft-pad')
+    expect(usePatchStore.getState().values.osc2Detune).toBe(12)
+    await user.click(screen.getByRole('button', { name: /reset defaults/i }))
+    expect(usePatchStore.getState().values).toMatchObject({ osc1Detune: 0, osc2Detune: 0 })
   })
 
   it('renders the blue UltraNova panel and edits its independent hardware controls', async () => {
@@ -144,7 +161,7 @@ describe('PatchGator', () => {
     await waitFor(() => expect(setParameters).toHaveBeenLastCalledWith(webSynthPresets[0].values))
     fireEvent.keyDown(screen.getByRole('slider', { name: 'Filter cutoff' }), { key: 'ArrowUp' })
     expect(usePatchStore.getState().values.filterCutoff).toBe(3201)
-    fireEvent.change(screen.getByRole('slider', { name: 'Amplifier attack' }), { target: { value: '1000' } })
+    fireEvent.change(screen.getByRole('slider', { name: 'Amplifier attack' }), { target: { value: String(envelopeTimeToPosition(1000, 20000)) } })
     expect(usePatchStore.getState().values.ampAttack).toBe(1000)
     expect(screen.getByRole('img', { name: 'Amplifier envelope curve' })).toHaveAccessibleDescription(/Attack 1000/)
     expect(screen.getByRole('combobox', { name: 'Web synth preset' })).toHaveValue('')

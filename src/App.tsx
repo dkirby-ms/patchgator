@@ -42,6 +42,7 @@ import { ultranovaParameters } from './model/ultranovaProfile'
 import { subtractiveLessons, tutorialComplete, tutorialDismissedStorageKey, tutorialInitialValues, tutorialParameters, tutorialSaveLesson } from './model/subtractiveTutorial'
 import { TutorialExplainer } from './TutorialExplainer'
 import { readWebSynthPresets, saveWebSynthPreset } from './model/webSynthPresetStorage'
+import { envelopePositionToTime, envelopeSliderMax, envelopeTimeToPosition } from './model/envelopeSliderScale'
 
 function ControlHelp({ label, text }: { label: string; text: string }) {
   const id = useId()
@@ -252,6 +253,7 @@ function WebSynthParameterControl({ parameter, vertical = false }: { parameter: 
 
   const valueLabels = 'valueLabels' in parameter ? parameter.valueLabels : undefined
   const isWaveform = parameter.id === 'osc1Wave' || parameter.id === 'osc2Wave'
+  const isEnvelopeTime = vertical && /(?:Attack|Decay|Release)$/.test(parameter.id)
   const valueText = parameter.id.endsWith('Shape')
     ? shapeWaveform === 3 ? `${value}% pulse width` : `${Math.round((value - 50) * 3.6)}° phase`
     : getWebSynthValueText(parameter, value)
@@ -281,7 +283,37 @@ function WebSynthParameterControl({ parameter, vertical = false }: { parameter: 
           ))}
         </fieldset>
       ) : vertical ? (
-        <input id={`web-${parameter.id}`} type="range" min={parameter.min} max={parameter.max} value={value} aria-label={parameter.label} aria-valuetext={valueText} aria-orientation="vertical" aria-description="Use arrow keys to adjust. Double-click or press Delete to restore the default." onChange={(event) => update(Number(event.target.value))} />
+        <input
+          id={`web-${parameter.id}`}
+          type="range"
+          min={parameter.min}
+          max={isEnvelopeTime ? envelopeSliderMax : parameter.max}
+          step={isEnvelopeTime ? 'any' : 1}
+          value={isEnvelopeTime ? envelopeTimeToPosition(value, parameter.max) : value}
+          aria-label={parameter.label}
+          aria-valuemin={parameter.min}
+          aria-valuemax={parameter.max}
+          aria-valuenow={value}
+          aria-valuetext={valueText}
+          aria-orientation="vertical"
+          aria-description={isEnvelopeTime ? 'Quadratic time scale: finer adjustment at short times, coarser at long times. Use arrow keys to adjust, Page Up or Page Down for larger changes, Home or End for the limits. Click the value to enter exact milliseconds. Double-click or press Delete to restore the default.' : 'Use arrow keys to adjust. Double-click or press Delete to restore the default.'}
+          onChange={(event) => update(isEnvelopeTime ? envelopePositionToTime(Number(event.target.value), parameter.max) : Number(event.target.value))}
+          onKeyDown={(event) => {
+            if (!isEnvelopeTime) return
+            const direction = event.key === 'ArrowUp' || event.key === 'ArrowRight' || event.key === 'PageUp' ? 1
+              : event.key === 'ArrowDown' || event.key === 'ArrowLeft' || event.key === 'PageDown' ? -1 : 0
+            if (event.key === 'Home' || event.key === 'End') {
+              event.preventDefault()
+              update(event.key === 'Home' ? parameter.min : parameter.max)
+            } else if (direction) {
+              event.preventDefault()
+              const step = event.key.startsWith('Page') ? 50 : 1
+              const position = Math.min(envelopeSliderMax, Math.max(0, envelopeTimeToPosition(value, parameter.max) + direction * step))
+              const next = envelopePositionToTime(position, parameter.max)
+              update(Math.min(parameter.max, Math.max(parameter.min, direction > 0 ? Math.max(value + 1, next) : Math.min(value - 1, next))))
+            }
+          }}
+        />
       ) : (
         <RotaryControl
           id={`web-${parameter.id}`}
@@ -512,7 +544,14 @@ function WebSynthPanel({ audio }: { audio: AudioSnapshot }) {
               <PanelModule key={section} id={`web-${section.toLowerCase().replaceAll(' ', '-')}`} title={section} className={`web-synth-module web-${section.toLowerCase().replaceAll(' ', '-')}-module`}>
                 {section === 'Amp envelope' || section === 'Filter envelope'
                   ? <WebSynthEnvelope section={section} values={values} />
-                  : <div className="web-synth-controls">
+                  : section === 'Filter' ? <>
+                    <div className="web-filter-type">
+                      {webSynthParameters.filter((parameter) => parameter.section === section && 'valueLabels' in parameter && available(parameter)).map((parameter) => <WebSynthParameterControl key={parameter.id} parameter={parameter} />)}
+                    </div>
+                    <div className="web-filter-tone-controls">
+                      {webSynthParameters.filter((parameter) => parameter.section === section && !('valueLabels' in parameter) && available(parameter)).map((parameter) => <WebSynthParameterControl key={parameter.id} parameter={parameter} />)}
+                    </div>
+                  </> : <div className="web-synth-controls">
                     {webSynthParameters.filter((parameter) => parameter.section === section && available(parameter)).map((parameter) => (
                       <WebSynthParameterControl key={parameter.id} parameter={parameter} vertical={section === 'Mixer'} />
                     ))}

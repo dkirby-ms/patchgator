@@ -337,7 +337,7 @@ describe('Web Audio synth', () => {
     expect(oscillators).toHaveLength(9)
     const detunes = oscillators.slice(1, 5).map((oscillator) => oscillator.detune.value)
     detunes.forEach((detune, index) => expect(detune).toBeCloseTo([-30, -10, 10, 30][index]))
-    oscillators.slice(5).forEach((oscillator, index) => expect(oscillator.detune.value).toBeCloseTo([-23, -3, 17, 37][index]))
+    oscillators.slice(5).forEach((oscillator, index) => expect(oscillator.detune.value).toBeCloseTo([-30, -10, 10, 30][index]))
     expect(gains[0].gain.audioParam.value).toBe(0.125)
     expect(gains[1].gain.audioParam.value).toBe(0.125)
     expect(synth.activeVoiceCount).toBe(1)

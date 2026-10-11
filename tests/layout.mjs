@@ -32,6 +32,44 @@ const viewports = [
 ]
 
 for (const width of [1366, 320]) {
+  test(`filter grouping and quadratic envelope sliders work at ${width}px`, async () => {
+    const context = await browser.newContext({ viewport: { width, height: 844 } })
+    const page = await context.newPage()
+    try {
+      await page.goto(baseUrl)
+      const filter = page.getByRole('region', { name: 'Filter', exact: true })
+      const controls = filter.locator('.web-filter-tone-controls [role="slider"]')
+      assert.deepEqual(await controls.evaluateAll((elements) => elements.map((element) => element.getAttribute('aria-label'))), ['Filter cutoff', 'Filter envelope amount', 'Filter resonance'])
+      const boxes = await controls.evaluateAll((elements) => elements.map((element) => {
+        const box = element.getBoundingClientRect()
+        return { x: box.x, y: box.y }
+      }))
+      assert.ok(boxes[0].x < boxes[1].x && boxes[1].x < boxes[2].x)
+      assert.equal(boxes[0].y, boxes[1].y)
+      assert.equal(boxes[1].y, boxes[2].y)
+      const attack = page.getByRole('slider', { name: 'Amplifier attack', exact: true })
+      await attack.fill('500')
+      assert.equal(await attack.getAttribute('aria-valuenow'), '5000')
+      assert.equal(await attack.getAttribute('aria-valuetext'), '5 s')
+      await attack.press('Home')
+      await attack.press('ArrowUp')
+      assert.equal(await attack.getAttribute('aria-valuenow'), '1')
+      await attack.press('End')
+      await attack.press('ArrowDown')
+      assert.equal(await attack.getAttribute('aria-valuenow'), '19960')
+      await page.getByRole('button', { name: /^Edit amplifier attack value:/ }).click()
+      await page.getByRole('spinbutton', { name: 'Amplifier attack value', exact: true }).fill('25')
+      await page.getByRole('spinbutton', { name: 'Amplifier attack value', exact: true }).press('Enter')
+      assert.equal(await attack.getAttribute('aria-valuenow'), '25')
+      assert.ok(Math.abs(Number(await attack.inputValue()) - Math.sqrt(25 / 20000) * 1000) < 0.001)
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
+      const results = await new AxeBuilder({ page }).include('.web-filter-module').include('.web-synth-envelope-grid').analyze()
+      assert.deepEqual(results.violations.map(({ id }) => id), [])
+    } finally {
+      await context.close()
+    }
+  })
+
   test(`debug diagnostics are visible and reflow across profiles at ${width}px`, async () => {
     const context = await browser.newContext({ viewport: { width, height: 844 } })
     const page = await context.newPage()
@@ -294,14 +332,18 @@ for (const width of [1366, 390, 320]) {
       const sustain = page.getByRole('slider', { name: 'Amplifier sustain', exact: true })
       await sustain.press('Home')
       for (let i = 0; i < 10; i++) await sustain.press('ArrowUp')
-      await page.getByRole('slider', { name: 'Amplifier decay', exact: true }).fill('250')
+      await page.getByRole('button', { name: /^Edit amplifier decay value:/ }).click()
+      await page.getByRole('spinbutton', { name: 'Amplifier decay value', exact: true }).fill('250')
+      await page.getByRole('spinbutton', { name: 'Amplifier decay value', exact: true }).press('Enter')
       await next.click()
       await assertLayout()
       const amount = page.getByRole('slider', { name: 'Filter envelope amount', exact: true })
       await amount.press('PageUp')
       await amount.press('PageUp')
       await amount.press('PageUp')
-      await page.getByRole('slider', { name: 'Filter decay', exact: true }).fill('180')
+      await page.getByRole('button', { name: /^Edit filter decay value:/ }).click()
+      await page.getByRole('spinbutton', { name: 'Filter decay value', exact: true }).fill('180')
+      await page.getByRole('spinbutton', { name: 'Filter decay value', exact: true }).press('Enter')
       await page.getByRole('slider', { name: 'Filter sustain', exact: true }).fill('0')
       await next.click()
       await assertLayout()
@@ -636,7 +678,7 @@ test('Web Synth envelope controls sit beside their graphs without an output visu
 test('Web Synth panels align compactly and graphical waveform radios work with the keyboard', async () => {
   const page = await browser.newPage()
   try {
-    for (const { width, height } of viewports) {
+    for (const { width, height } of [...viewports, { width: 601, height: 900 }, { width: 600, height: 900 }]) {
       await page.setViewportSize({ width, height })
       await page.goto(baseUrl)
       await page.evaluate(() => document.fonts.ready)
@@ -685,6 +727,50 @@ test('Web Synth panels align compactly and graphical waveform radios work with t
     assert.equal(await oscillator2.getByRole('radio', { name: 'Sawtooth' }).isChecked(), true)
     await page.keyboard.press('Delete')
     assert.equal(await oscillator1.getByRole('radio', { name: 'Sawtooth' }).isChecked(), true)
+  } finally {
+    await page.close()
+  }
+})
+
+test('Web Synth allocates space to controls rather than oversized filter columns', async () => {
+  const page = await browser.newPage()
+  try {
+    for (const width of [1920, 1366, 1201, 1200, 1099, 768, 701, 700, 601]) {
+      await page.setViewportSize({ width, height: 900 })
+      await page.goto(baseUrl)
+      await page.evaluate(() => document.fonts.ready)
+      const layout = await page.evaluate(() => {
+        const bounds = (selector) => {
+          const box = document.querySelector(selector).getBoundingClientRect()
+          return { width: box.width, top: box.top, bottom: box.bottom, left: box.left, right: box.right }
+        }
+        return {
+          panel: bounds('.web-synth-panel'),
+          filter: bounds('.web-filter-module'),
+          lfo: bounds('.web-lfo-module'),
+          mixer: bounds('.web-mixer-module'),
+          oscillator: bounds('.web-oscillator-1-module'),
+          filterType: bounds('.web-filter-type'),
+          filterControls: [...document.querySelectorAll('.web-filter-tone-controls .web-synth-control')]
+            .map((element) => element.getBoundingClientRect().width),
+          lfoRows: [...document.querySelectorAll('.web-lfo-module [role="slider"]')]
+            .map((element) => element.getBoundingClientRect().top),
+          pageWidth: document.documentElement.scrollWidth,
+        }
+      })
+      assert.ok(layout.panel.width <= 1480, 'Ultrawide screens must not stretch the control surface indefinitely')
+      assert.ok(layout.pageWidth <= width, `Web Synth must fit at ${width}px`)
+      assert.ok(Math.abs(layout.filter.width - layout.lfo.width) < 1, 'Filter and LFO must share space evenly')
+      assert.ok(layout.filterControls.every((controlWidth) => controlWidth <= 170), `Filter encoder cells must stay compact at ${width}px: ${layout.filterControls}`)
+      assert.ok(Math.abs(layout.filterType.width - (layout.filter.width - 2)) < 1, 'Filter type row must not leave an unused strip')
+      assert.equal(new Set(layout.lfoRows).size, 2, `LFO encoders must align in two rows at ${width}px: ${layout.lfoRows}`)
+      if (width <= 1200) {
+        assert.equal(layout.filter.top, layout.lfo.top, 'Filter and LFO must sit side by side')
+        assert.equal(layout.mixer.top, layout.oscillator.top)
+        assert.equal(layout.mixer.bottom, layout.filter.bottom, 'Mixer must share both signal rows without unused grid space')
+        assert.ok(layout.lfo.right <= layout.mixer.left, 'The spanning mixer must not overlap the LFO')
+      }
+    }
   } finally {
     await page.close()
   }

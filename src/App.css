@@ -33,7 +33,7 @@
 
 main { padding: 10px clamp(14px, 2vw, 32px); background-image: linear-gradient(rgba(37,41,43,0.035) 1px, transparent 1px); background-size: 100% 28px; }
 .panel-workspace { max-width: 1920px; margin: 0 auto; }
-.web-synth-panel { padding: clamp(12px, 2vw, 24px); border: 1px solid #596365; border-radius: 4px; background: #202527; color: #f4f4ef; }
+.web-synth-panel { max-width: 1480px; padding: clamp(12px, 1vw, 16px); border: 1px solid #596365; border-radius: 4px; background: #202527; color: #f4f4ef; }
 .web-synth-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
 .web-synth-heading h2 { margin: 4px 0; font-size: clamp(20px, 3vw, 28px); text-transform: uppercase; }
 .web-synth-heading p { margin: 0; color: #b7c1c3; font: 400 11px/1.6 var(--mono); }
@@ -117,10 +117,12 @@ main { padding: 10px clamp(14px, 2vw, 32px); background-image: linear-gradient(r
 .preset-error { padding: 10px; border-left: 3px solid #ef6c58; color: #ffd3ca; background: #292f31; overflow-wrap: anywhere; }
 .tutorial-controls .web-synth-signal-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); }
 .tutorial-controls .web-synth-envelope-grid:empty { display: none; }
-.web-synth-signal-grid { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.8fr) 112px minmax(0, 2.2fr) minmax(0, 1.1fr); gap: 8px; align-items: stretch; }
+.web-synth-signal-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 112px minmax(0, 1.5fr) minmax(0, 1.5fr); gap: 8px; align-items: stretch; }
 .web-synth-envelope-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1.25fr)) minmax(0, 1fr); gap: 8px; align-items: stretch; }
 .web-synth-module { min-width: 0; }
 .web-synth-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.web-filter-tone-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.web-filter-tone-controls .parameter-heading label { overflow-wrap: anywhere; }
 .web-voice-module .web-synth-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .web-voice-module .web-synth-control:last-child { grid-column: 1 / -1; }
 .web-voice-note { margin: 8px 6px; color: #b7c1c3; font: 400 10px/1.5 var(--mono); }
@@ -195,6 +197,7 @@ main { padding: 10px clamp(14px, 2vw, 32px); background-image: linear-gradient(r
 .web-synth-control .parameter-heading { flex-wrap: wrap; gap: 2px; }
 .web-synth-control .parameter-heading label { flex: 1; }
 .web-synth-control .parameter-heading output { flex-basis: 100%; }
+.web-filter-tone-controls .parameter-heading { min-height: 40px; }
 .web-envelope-layout .parameter-heading, .hardware-envelope-layout .parameter-heading { width: 100%; max-width: 100%; flex-wrap: nowrap; }
 .web-envelope-layout .parameter-heading label, .web-envelope-layout .parameter-heading output, .hardware-envelope-layout .parameter-heading label, .hardware-envelope-layout .parameter-heading output { flex: none; max-width: 100%; text-align: center; }
 .web-mixer-module .parameter-heading { flex-direction: row; justify-content: center; }
@@ -383,9 +386,10 @@ main { padding: 10px clamp(14px, 2vw, 32px); background-image: linear-gradient(r
 }
 @media (max-width: 1200px) {
   .web-synth-signal-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 112px; }
-  .web-filter-module { grid-column: 1 / 3; }
-  .web-lfo-module { grid-column: 3; }
-  .web-lfo-module .web-synth-controls { grid-template-columns: 1fr; }
+  .web-synth-grid:not(.tutorial-controls) .web-filter-module { grid-column: 1; }
+  .web-synth-grid:not(.tutorial-controls) .web-lfo-module { grid-column: 2; }
+  .web-synth-grid:not(.tutorial-controls) .web-mixer-module { grid-column: 3; grid-row: 1 / 3; }
+  .web-mixer-module .web-synth-control input[type='range'] { height: 180px; }
   .web-envelope-layout, .hardware-envelope-layout { grid-template-columns: 160px minmax(0, 1fr); }
 }
 @media (max-width: 700px) {
@@ -402,12 +406,7 @@ main { padding: 10px clamp(14px, 2vw, 32px); background-image: linear-gradient(r
   .web-synth-heading { align-items: stretch; flex-direction: column; }
   .web-synth-actions { align-items: stretch; flex-wrap: wrap; }
   .web-synth-actions label { flex: 1; }
-  .web-synth-signal-grid { grid-template-columns: minmax(0, 1fr) 112px; }
-  .web-oscillator-1-module, .web-oscillator-2-module { grid-column: 1; }
-  .web-mixer-module { grid-column: 2; grid-row: 1 / 3; }
-  .web-filter-module, .web-lfo-module { grid-column: 1 / -1; }
-  .web-lfo-module .web-synth-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .web-lfo-module .web-synth-control:last-child { grid-column: auto; }
+  .web-lfo-module .parameter-heading { min-height: 40px; }
   .web-synth-envelope-grid { grid-template-columns: 1fr; }
   .peak-panel { padding: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: 'utility utility' 'lfo lfo' 'amp amp' 'mod mod' 'osc osc' 'mixer mixer' 'filter filter' 'matrix matrix' 'arp glide' 'effects effects' 'menu menu' 'caption caption'; }
   .panel-caption { flex-wrap: wrap; }
@@ -425,10 +424,17 @@ main { padding: 10px clamp(14px, 2vw, 32px); background-image: linear-gradient(r
   .velocity-control { grid-column: 1 / -1; grid-template-columns: auto 1fr 30px; }
   .octave-control { grid-template-columns: 38px 1fr 38px; }
 }
+@media (max-width: 600px) {
+  .web-synth-signal-grid { grid-template-columns: minmax(0, 1fr) 112px; }
+  .web-oscillator-1-module, .web-oscillator-2-module { grid-column: 1; }
+  .web-synth-grid:not(.tutorial-controls) .web-mixer-module { grid-column: 2; grid-row: 1 / 3; }
+  .web-mixer-module .web-synth-control input[type='range'] { height: 120px; }
+  .web-synth-grid:not(.tutorial-controls) .web-filter-module, .web-synth-grid:not(.tutorial-controls) .web-lfo-module { grid-column: 1 / -1; }
+}
 @media (max-width: 360px) {
   .web-synth-signal-grid { grid-template-columns: minmax(0, 1fr); }
   .web-voice-module .web-synth-controls { grid-template-columns: 1fr; }
-  .web-mixer-module { grid-column: 1; grid-row: auto; }
+  .web-synth-grid:not(.tutorial-controls) .web-mixer-module { grid-column: 1; grid-row: auto; }
   .web-envelope-layout, .hardware-envelope-layout { grid-template-columns: 1fr; }
   .web-envelope-layout .web-envelope-graph, .hardware-envelope-layout .envelope-graph { width: 100%; height: 100px; }
 }
