@@ -34,6 +34,7 @@ function createAudioContext(autoEnd = true) {
   const gains: Array<{ gain: ReturnType<typeof createAudioParam>; connect: ReturnType<typeof vi.fn> }> = []
   const gainNodes: Array<{ connect: ReturnType<typeof vi.fn> }> = []
   const filters: Array<{ frequency: ReturnType<typeof createAudioParam>; Q: ReturnType<typeof createAudioParam>; node: { type: BiquadFilterType; connect: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> } }> = []
+  const analyser = { fftSize: 0, minDecibels: 0, maxDecibels: 0, smoothingTimeConstant: 0, disconnect: vi.fn() }
   const context = {
     currentTime: 1,
     sampleRate: 48000,
@@ -42,6 +43,7 @@ function createAudioContext(autoEnd = true) {
     resume: vi.fn(async () => { state = 'running' }),
     close: vi.fn(async () => { state = 'closed' }),
     createPeriodicWave: vi.fn((real: Float32Array, imag: Float32Array) => ({ real, imag })),
+    createAnalyser: vi.fn(() => analyser),
     createOscillator: vi.fn(() => {
       const isLfo = oscillators.length === 0
       const oscillator = {
@@ -91,7 +93,7 @@ function createAudioContext(autoEnd = true) {
       return filter
     }),
   } as unknown as AudioContext
-  return { context, oscillators, gains, gainNodes, filters, modulationConnections }
+  return { context, oscillators, gains, gainNodes, filters, modulationConnections, analyser }
 }
 
 describe('Web Audio synth', () => {
@@ -112,12 +114,23 @@ describe('Web Audio synth', () => {
   })
 
   it('routes the amplifier output directly to the audio destination', async () => {
-    const { context, gainNodes } = createAudioContext()
+    const { context, gainNodes, analyser } = createAudioContext()
     const synth = new WebAudioSynth(() => context)
+    expect(synth.getOutputAnalyser()).toBeNull()
     await synth.start()
     synth.noteOn(60)
 
     expect(gainNodes[2].connect).toHaveBeenCalledWith(context.destination)
+    expect(gainNodes[2].connect).toHaveBeenCalledWith(analyser)
+    expect(synth.getOutputAnalyser()).toBe(analyser)
+    expect(analyser.fftSize).toBe(4096)
+    await synth.start()
+    synth.noteOn(64)
+    expect(context.createAnalyser).toHaveBeenCalledTimes(1)
+    expect(gainNodes[9].connect).toHaveBeenCalledWith(analyser)
+    await synth.dispose()
+    expect(analyser.disconnect).toHaveBeenCalledOnce()
+    expect(synth.getOutputAnalyser()).toBeNull()
   })
 
   it('mixes oscillators independently and smooths active voice level changes', async () => {

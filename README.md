@@ -28,6 +28,13 @@ synth bass for electronic and pop bass lines. The guided recipe uses sawtooth
 oscillators, one shared low-pass filter, short amplifier and filter envelopes, and steady
 pitch instead of a long pad-like tail. Start audio and try low notes around C2.
 
+The compact **Output spectrum** beside the virtual piano keys shows 12 bands of
+live bass, midrange, and treble energy while you play. It stacks below the keys
+on narrow screens and collapses with the keyboard. It measures the mixed output without changing the sound;
+it is not an adjustable EQ. Frequencies run left to right on a logarithmic scale.
+Use **Pause spectrum** to freeze the display. Reduced-motion preferences start
+it paused, and updates stop while the browser tab is hidden.
+
 ## Connect a synth
 
 1. Power on the synth and choose its profile in the app.

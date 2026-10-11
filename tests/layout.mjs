@@ -823,6 +823,83 @@ test('Web Synth help is keyboard operable and stays within every viewport', asyn
   }
 })
 
+for (const width of [1366, 320]) {
+  test(`live output spectrum measures playing audio without changing it at ${width}px`, async () => {
+    const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: width === 320 ? 'reduce' : 'no-preference' })
+    const page = await context.newPage()
+    try {
+      await page.goto(baseUrl)
+      const spectrum = page.getByRole('region', { name: 'Live output spectrum', exact: true })
+      assert.equal(await spectrum.locator('rect').count(), 12, 'Spectrum must display exactly 12 bands')
+      assert.equal(await page.getByRole('region', { name: 'Virtual keyboard', exact: true }).getByRole('region', { name: 'Live output spectrum', exact: true }).count(), 1, 'Spectrum must belong to the keyboard pane')
+      const keysBounds = await page.locator('.keyboard-keybed').boundingBox()
+      const spectrumBounds = await spectrum.boundingBox()
+      if (width > 700) {
+        assert.ok(spectrumBounds.x >= keysBounds.x + keysBounds.width, 'Spectrum must sit beside the piano keys')
+      } else {
+        assert.ok(spectrumBounds.y >= keysBounds.y + keysBounds.height, 'Spectrum must stack below the piano keys on phones')
+      }
+      assert.equal(await spectrum.getByRole('button').isDisabled(), true)
+      await page.getByRole('button', { name: 'Start audio', exact: true }).click()
+      if (width === 320) {
+        assert.equal(await spectrum.getByRole('button', { name: 'Resume spectrum' }).getAttribute('aria-pressed'), 'true')
+        await spectrum.getByRole('button', { name: 'Resume spectrum' }).click()
+      }
+      await page.evaluate(async () => {
+        const { webAudioSynth } = await import('/src/audio/webAudioSynth.ts')
+        const { usePatchStore } = await import('/src/model/patchStore.ts')
+        usePatchStore.getState().applyProfileValues('web-synth', {
+          ...usePatchStore.getState().values, osc1Wave: 0, osc2Level: 0,
+          filterType: 0, filterCutoff: 12000, filterEnvelopeAmount: 0,
+          ampAttack: 0, ampDecay: 0, ampSustain: 100,
+        })
+        webAudioSynth.noteOn(69)
+      })
+      const peakBand = async () => {
+        await page.waitForFunction(() => [...document.querySelectorAll('.audio-spectrum-plot rect')].some((bar) => Number(bar.getAttribute('height')) > 10))
+        return spectrum.locator('rect').evaluateAll((bars) => {
+          const heights = bars.map((bar) => Number(bar.getAttribute('height')))
+          return heights.indexOf(Math.max(...heights))
+        })
+      }
+      const lowPeak = await peakBand()
+      assert.equal(lowPeak, 5, `440 Hz should peak in band 5, not ${lowPeak}`)
+      await spectrum.getByRole('button', { name: 'Pause spectrum' }).click()
+      const frozen = await spectrum.locator('rect').evaluateAll((bars) => bars.map((bar) => bar.getAttribute('height')))
+      await page.evaluate(async () => {
+        const { webAudioSynth } = await import('/src/audio/webAudioSynth.ts')
+        webAudioSynth.allNotesOff()
+        webAudioSynth.noteOn(81)
+      })
+      await page.waitForTimeout(200)
+      assert.deepEqual(await spectrum.locator('rect').evaluateAll((bars) => bars.map((bar) => bar.getAttribute('height'))), frozen)
+      await spectrum.getByRole('button', { name: 'Resume spectrum' }).click()
+      await page.waitForFunction(() => {
+        const heights = [...document.querySelectorAll('.audio-spectrum-plot rect')].map((bar) => Number(bar.getAttribute('height')))
+        return heights.indexOf(Math.max(...heights)) >= 6
+      })
+      const highPeak = await peakBand()
+      assert.equal(highPeak, 6, `880 Hz should peak in band 6, not ${highPeak}`)
+      await page.evaluate(async () => {
+        const { webAudioSynth } = await import('/src/audio/webAudioSynth.ts')
+        webAudioSynth.allNotesOff()
+      })
+      await page.waitForFunction(() => [...document.querySelectorAll('.audio-spectrum-plot rect')].every((bar) => Number(bar.getAttribute('height')) === 0))
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
+      const results = await new AxeBuilder({ page }).include('.audio-spectrum').analyze()
+      assert.deepEqual(results.violations.map(({ id }) => id), [])
+      await page.getByRole('button', { name: 'Virtual keyboard', exact: true }).click()
+      assert.equal(await spectrum.count(), 0, 'Collapsing the keyboard must remove spectrum animation')
+      await page.getByRole('button', { name: 'Virtual keyboard', exact: true }).click()
+      assert.equal(await spectrum.count(), 1)
+      await page.getByRole('combobox', { name: 'Synth profile' }).selectOption('summit')
+      assert.equal(await spectrum.count(), 0)
+    } finally {
+      await context.close()
+    }
+  })
+}
+
 test('Web Synth renders a shared LP/HP/BP filter, unison, and oscillator shape in real Web Audio', async () => {
   const page = await browser.newPage()
   try {
@@ -839,6 +916,7 @@ test('Web Synth renders a shared LP/HP/BP filter, unison, and oscillator shape i
           destination: offline.destination,
           createOscillator: () => offline.createOscillator(),
           createGain: () => offline.createGain(),
+          createAnalyser: () => offline.createAnalyser(),
           createBiquadFilter: () => offline.createBiquadFilter(),
           createPeriodicWave: (...args) => offline.createPeriodicWave(...args),
         }

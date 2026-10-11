@@ -24,6 +24,7 @@ import { validateSysex } from './midi/sysex'
 import { useMidi } from './midi/useMidi'
 import { webAudioSynth, type AudioSnapshot } from './audio/webAudioSynth'
 import { webSynthParameterHelp, webSynthParameters, webSynthPresets } from './model/webSynthProfile'
+import { AudioSpectrum } from './AudioSpectrum'
 import { ClickControlHelp } from './ClickControlHelp'
 import {
   getParameterValueLabel,
@@ -467,8 +468,8 @@ function WebSynthPanel({ audio }: { audio: AudioSnapshot }) {
       <div className="web-synth-heading">
         <div>
           <span className="eyebrow">Independent browser instrument</span>
-          <h2>Built-in Web Synth</h2>
-          <p>Shape a two-oscillator synth and play without connected hardware.</p>
+          <h2>Simple Web Synth</h2>
+          <p>Two-oscillator synth with filter, envelope, and LFO.</p>
         </div>
         <div className="web-synth-actions">
           <div className="web-preset-control">
@@ -987,7 +988,7 @@ function requireSynthProfile(id: typeof synthProfiles[number]['id']) {
   return profile
 }
 
-function VirtualKeyboard({ output }: { output: PerformanceOutput }) {
+function VirtualKeyboard({ output, spectrum }: { output: PerformanceOutput; spectrum?: ReactNode }) {
   const isWebSynth = usePatchStore((state) => state.activeProfileId === 'web-synth')
   const keybedRef = useRef<HTMLDivElement>(null)
   const [visibleOctaves, setVisibleOctaves] = useState(keyboardOctaves)
@@ -1159,11 +1160,14 @@ function VirtualKeyboard({ output }: { output: PerformanceOutput }) {
         </div>
         <div id="keyboard-content" hidden={!expanded}>
           <p className="keyboard-status" role="status">{output.readyMessage}</p>
+          <div className={spectrum ? 'keyboard-performance-grid' : undefined}>
           <div className="keyboard-keybed" role="group" aria-label="Piano keyboard">
             <div className="piano-bed" ref={keybedRef}>
               <div className="white-keys">{whiteKeys.map((offset) => keyButton(offset, 'white'))}</div>
               <div className="black-keys">{blackKeys.map(({ offset, position }) => keyButton(offset, 'black', position))}</div>
             </div>
+          </div>
+          {expanded && spectrum}
           </div>
         </div>
       </div>
@@ -1472,7 +1476,7 @@ function App() {
         </div> : activeProfileId === 'ultranova' ? <UltraNovaPanel /> : <WebSynthPanel audio={audio} />}
       </main>
 
-      {(activeProfile.capabilities.audioOutput || activeProfile.capabilities.midiOutput) && <VirtualKeyboard key={`${activeProfileId}:${activeProfileId === 'web-synth' ? audio.status : midi.selectedOutputId}`} output={keyboardOutput} />}
+      {(activeProfile.capabilities.audioOutput || activeProfile.capabilities.midiOutput) && <VirtualKeyboard key={`${activeProfileId}:${activeProfileId === 'web-synth' ? audio.status : midi.selectedOutputId}`} output={keyboardOutput} spectrum={activeProfileId === 'web-synth' ? <AudioSpectrum status={audio.status} /> : undefined} />}
 
       {debug && <DebugPanel profile={activeProfile} midi={midi} audio={audio} />}
 
