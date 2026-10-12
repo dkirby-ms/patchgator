@@ -183,6 +183,11 @@ describe('PatchGator', () => {
     await user.selectOptions(screen.getByRole('combobox', { name: 'Web synth preset' }), 'soft-pad')
     expect(usePatchStore.getState().values).toEqual(webSynthPresets[0].values)
     await waitFor(() => expect(setParameters).toHaveBeenLastCalledWith(webSynthPresets[0].values))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Web synth preset' }), 'kick-drum')
+    const kickDrum = webSynthPresets.find((preset) => preset.id === 'kick-drum')!
+    expect(usePatchStore.getState().values).toEqual(kickDrum.values)
+    await waitFor(() => expect(setParameters).toHaveBeenLastCalledWith(kickDrum.values))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Web synth preset' }), 'soft-pad')
     fireEvent.keyDown(screen.getByRole('slider', { name: 'Filter cutoff' }), { key: 'ArrowUp' })
     expect(usePatchStore.getState().values.filterCutoff).toBe(3201)
     fireEvent.change(screen.getByRole('slider', { name: 'Amplifier attack' }), { target: { value: String(envelopeTimeToPosition(1000, 20000)) } })

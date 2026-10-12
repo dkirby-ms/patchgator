@@ -66,7 +66,8 @@ describe('synth profiles', () => {
       expect(webSynthParameters.find((parameter) => parameter.id === id)?.defaultValue).toBe(0)
       expect(webSynthProfile.defaultValues[id]).toBe(0)
     }
-    expect(webSynthPresets.map((preset) => preset.values.osc2Detune)).toEqual([12, 5, -12])
+    expect(webSynthPresets.slice(0, 3).map((preset) => preset.values.osc2Detune)).toEqual([12, 5, -12])
+    expect(webSynthPresets.map((preset) => preset.name)).toContain('Kick Drum')
   })
 
   it('defines each Web Synth coarse pitch control as a centered semitone range', () => {
