@@ -11,6 +11,7 @@ PatchGator is a browser-based synth patch editor for creating and fine-tuning so
 - Use a built-in virtual synth with a keyboard and tutorial
 - Connect to supported Novation hardware via Web MIDI
 - Import/export patch data and transfer raw Summit patches
+- Match a local reference recording on a Summit or UltraNova with a Foundry-hosted agent and local Python studio tools
 
 ## Get started
 
@@ -41,6 +42,15 @@ it paused, and updates stop while the browser tab is hidden.
 2. Click **Connect MIDI** and allow access.
 3. Select the MIDI input, output, and channel.
 
+## Match a sound with the Foundry agent
+
+PatchGator's optional Python studio worker uses a Microsoft Foundry prompt agent for
+high-level guidance while keeping audio capture, MIDI control, and candidate search
+on the local computer. See [docs/sound-matching-agent.md](docs/sound-matching-agent.md)
+for installation and configuration. The worker only contacts the configured Foundry
+project over authenticated outbound HTTPS; it does not expose a local studio endpoint.
+Reference audio stays local; the agent receives numerical analysis and match results.
+
 ## Useful commands
 
 Click **Debug** in the footer to show live audio and MIDI status, selected ports,
@@ -52,6 +62,15 @@ NRPN addresses beneath their controls.
 npm run dev     # start the app
 npm run build   # production build
 npm run test    # run tests
+```
+
+The optional local studio tools are installed and run separately from the browser app:
+
+```powershell
+Set-Location studio
+uv sync
+uv run patchgator-studio devices midi
+uv run patchgator-studio devices audio
 ```
 
 ## Notes
