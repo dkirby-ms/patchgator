@@ -11,6 +11,14 @@ node_modules
 dist
 dist-ssr
 *.local
+studio/.venv/
+studio/*.egg-info/
+studio/.env
+studio/__pycache__/
+studio/patchgator_studio/__pycache__/
+studio/tests/__pycache__/
+studio/results/
+studio/references/
 
 # Editor directories and files
 .vscode/*
